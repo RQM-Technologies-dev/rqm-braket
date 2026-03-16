@@ -224,12 +224,19 @@ def spinor_to_circuit(
 
     alpha = complex(spinor[0])
     beta = complex(spinor[1])
+
+    # TODO: delegate spinor normalisation to rqm-core once
+    #       rqm_core.spinor.normalize() is available.
+    #       Propose: rqm_core.spinor.normalize(spinor) → (alpha, beta)
     norm = math.sqrt(abs(alpha) ** 2 + abs(beta) ** 2)
     if norm < 1e-12:
         raise ValueError("Spinor has zero norm.")
     alpha /= norm
     beta /= norm
 
+    # TODO: delegate Bloch angle extraction to rqm-core once
+    #       rqm_core.spinor.to_bloch_angles() is available.
+    #       Propose: rqm_core.spinor.to_bloch_angles(alpha, beta) → (theta, phi)
     # θ = 2·arccos(|α|), clamped to [0, 1] to guard against floating-point noise
     theta = 2.0 * math.acos(min(1.0, abs(alpha)))
     # Relative phase φ = arg(β) − arg(α)
@@ -296,6 +303,9 @@ def bloch_to_circuit(
     if r < 1e-12:
         raise ValueError("Bloch vector has zero magnitude.")
 
+    # TODO: delegate Bloch vector normalisation and spherical-angle extraction
+    #       to rqm-core once rqm_core.bloch.to_angles() is available.
+    #       Propose: rqm_core.bloch.to_angles(bloch_vector) → (theta, phi)
     # Normalise to unit sphere
     x, y, z = x / r, y / r, z / r
 
@@ -365,6 +375,10 @@ def quaternion_to_circuit(
     norm = math.sqrt(w ** 2 + x ** 2 + y ** 2 + z ** 2)
     if norm < 1e-12:
         raise ValueError("Quaternion has zero norm.")
+
+    # TODO: delegate quaternion normalisation and SU(2) Euler decomposition
+    #       to rqm-core once rqm_core.quaternion.to_euler_zyz() is available.
+    #       Propose: rqm_core.quaternion.to_euler_zyz(quaternion) → (alpha, beta, gamma)
     w, x, y, z = w / norm, x / norm, y / norm, z / norm
 
     # SU(2) matrix elements:
