@@ -1,95 +1,118 @@
 # rqm-braket
 
-AWS Braket integration layer for the **Resonant Quantum Mechanics (RQM)** ecosystem.
+Amazon Braket backend for the **Resonant Quantum Mechanics (RQM)** ecosystem.
 
-This package translates **RQM objects and operations** into **Amazon Braket circuits** and provides helpers for running those circuits on both:
+`rqm-braket` executes **compiled RQM programs** on:
 
-- the **Braket Local Simulator**
+- the **Amazon Braket Local Simulator**
 - **AWS Braket quantum devices**
 
-`rqm-braket` is a **backend bridge**, not a math engine.
-
-All canonical quaternion, spinor, Bloch, and SU(2) mathematics live in **`rqm-core`**.
+This package is a **backend adapter**, not a compiler and not a math engine.
 
 ---
 
-## Position in the RQM Ecosystem
+## Architecture Overview
 
-The RQM software stack separates **canonical mathematics** from **execution backends**.
+The RQM software stack is intentionally layered:
 
 ```
-                ┌──────────────────┐
-                │    rqm-docs      │
-                │  documentation   │
-                └────────┬─────────┘
-                         │
-       ┌─────────────────┼─────────────────┐
-       │                 │                 │
-┌──────┴──────┐          │      ┌──────────┴─────────┐
-│  rqm-core   │          │      │     rqm-qiskit     │
-│ canonical   │          │      │   Qiskit bridge    │
-│    math     │          │      │                    │
-└──────┬──────┘          │      └──────────┬─────────┘
-       │                 │                 │
-       │          ┌──────┴──────┐          │
-       │          │ rqm-braket  │          │
-       │          │ AWS Braket  │          │
-       │          │   bridge    │          │
-       │          └──────┬──────┘          │
-       │                 │                 │
-       └─────────────────┼─────────────────┘
-                         │
-                ┌────────┴─────────┐
-                │  rqm-notebooks   │
-                │ tutorials / demos│
-                └──────────────────┘
+              rqm-docs
+                  |
+  -----------------------------------
+  |               |                |
+rqm-core      rqm-compiler     rqm-notebooks
+                  |
+        ----------------------
+        |                    |
+    rqm-qiskit          rqm-braket
 ```
 
----
+### Layer responsibilities
 
-## What This Package Provides
-
-`rqm-braket` contains three main components:
-
-### 1️⃣ Translators
-
-Convert RQM-side objects into **Amazon Braket circuits**.
-
-Examples:
-
-- spinor → Braket circuit
-- Bloch vector → Braket circuit
-- quaternion rotation → Braket circuit
-
-These translators **delegate all math to `rqm-core`**.
+| Layer            | Responsibility |
+|------------------|----------------|
+| `rqm-core`       | Canonical math (quaternion, spinor, Bloch, SU(2)) |
+| `rqm-compiler`   | Compile RQM objects into backend-agnostic instructions |
+| `rqm-braket`     | Execute compiled programs on Amazon Braket |
+| `rqm-qiskit`     | Execute compiled programs on Qiskit |
+| `rqm-notebooks`  | Examples, demos, tutorials |
 
 ---
 
-### 2️⃣ Result Wrappers
+## What This Package Does
 
-Provide simple Python-friendly access to Braket outputs.
+`rqm-braket` provides three core capabilities:
 
-Examples:
+---
 
-- measurement counts
-- probability helpers
-- convenience methods like:
+### 1. Translation
 
-```python
-result.most_likely_bitstring()
-result.probability_of("00")
+Convert **compiled programs** into Braket `Circuit` objects.
+
+```
+compiled_program → Braket Circuit
+```
+
+Handled by:
+
+```
+BraketTranslator
+compile_to_braket_circuit(...)
 ```
 
 ---
 
-### 3️⃣ Device Execution Helpers
+### 2. Execution
 
 Run circuits on:
 
-- Braket **LocalSimulator**
-- AWS **Braket devices**
+- Local simulator (offline-safe)
+- AWS Braket devices
 
-Helpers simplify the normal Braket task workflow.
+```
+Circuit → execution → result
+```
+
+Handled by:
+
+```
+run_local(...)
+run_device(...)
+BraketBackend
+```
+
+---
+
+### 3. Result Wrapping
+
+Normalize Braket outputs into a simple interface:
+
+```python
+result.counts
+result.probabilities
+result.shots
+result.most_likely_bitstring()
+```
+
+---
+
+## What This Package Does NOT Do
+
+`rqm-braket` deliberately does **not** include:
+
+* quaternion math
+* spinor math
+* Bloch sphere logic
+* SU(2) algebra
+* circuit compilation logic
+* backend-agnostic instruction design
+
+These belong to:
+
+```
+rqm-core
+rqm-compiler
+```
 
 ---
 
@@ -107,58 +130,101 @@ pip install -e .
 
 ---
 
-## Quick Example
+## Quick Start (Compiled Program)
 
 ```python
-from rqm_braket.devices import run_local
-from rqm_braket.translators import spinor_to_circuit
+from rqm_braket import BraketBackend, RQMGate
 
-# |+⟩ state: equal superposition of |0⟩ and |1⟩
-spinor = [1, 1]
+program = [
+    RQMGate("H", target=0),
+    RQMGate("CNOT", control=0, target=1),
+]
 
-circuit = spinor_to_circuit(spinor)
+backend = BraketBackend()
 
-result = run_local(circuit, shots=1000)
+result = backend.run_local(program, shots=1000)
 
 print(result.counts)
-print(result.most_likely_bitstring())
+```
+
+---
+
+## Direct Translation Example
+
+```python
+from rqm_braket import compile_to_braket_circuit, RQMGate
+
+program = [
+    RQMGate("RX", target=0, angle=1.57),
+]
+
+circuit = compile_to_braket_circuit(program)
+
+print(circuit)
 ```
 
 ---
 
 ## Examples
 
-Example scripts are provided in the `examples/` directory.
-
-### Local simulator demo
+### Local simulator
 
 ```
 examples/basic_local_simulator.py
 ```
 
-Creates a simple circuit and runs it on the Braket Local Simulator.
-
-### Bell state demo
+### Bell state
 
 ```
 examples/bell_state_demo.py
 ```
 
-Constructs a Bell circuit and prints measurement counts.
+### Compiled program demo
+
+```
+examples/compiled_program_demo.py
+```
 
 ---
 
 ## Public API
 
-| Symbol | Description |
-|---|---|
-| `to_braket_circuit(gate_sequence, n_qubits)` | Translate an RQM gate sequence to a Braket `Circuit` |
-| `spinor_to_circuit(spinor, qubit)` | Translate a spinor [α, β] into a state-prep circuit |
-| `bloch_to_circuit(bloch_vector, qubit)` | Translate a Bloch vector [x, y, z] into a state-prep circuit |
-| `quaternion_to_circuit(quaternion, qubit)` | Translate a unit quaternion [w, x, y, z] into a single-qubit circuit |
-| `run_local(circuit, shots)` | Execute on the local Braket simulator |
-| `run_device(circuit, device_arn, s3_folder, shots)` | Execute on an AWS Braket device |
-| `BraketResult` | Friendly wrapper around Braket task results |
+```python
+BraketBackend
+BraketTranslator
+RQMGate
+compile_to_braket_circuit
+run_local
+run_device
+BraketResult
+```
+
+---
+
+## Execution Modes
+
+### Local (offline-safe)
+
+```python
+result = run_local(program, shots=100)
+```
+
+No AWS credentials required.
+
+---
+
+### AWS Device
+
+```python
+result = run_device(
+    program,
+    device_arn="arn:aws:braket:...",
+    s3_folder=("bucket", "prefix"),
+    shots=100
+)
+```
+
+Requires standard AWS + Braket configuration.
 
 ---
 
@@ -170,63 +236,76 @@ Run tests:
 pytest
 ```
 
-Install development dependencies:
+All tests are:
 
-```bash
-pip install -r requirements-dev.txt
+* offline-safe
+* no AWS credentials required
+* include mocked cloud execution
+
+---
+
+## Design Principles
+
+### Thin Adapter Layer
+
+`rqm-braket` is intentionally minimal:
+
+* no duplicated logic
+* no second IR
+* no math reimplementation
+
+---
+
+### Compiler Boundary
+
+All inputs come from:
+
+```
+rqm-compiler
+```
+
+This ensures:
+
+* backend independence
+* clean separation of concerns
+* extensibility to new platforms
+
+---
+
+### Backend Agnostic Design
+
+Because the compiler produces a canonical instruction format:
+
+```
+rqm-compiler → rqm-qiskit
+rqm-compiler → rqm-braket
+rqm-compiler → future backends
 ```
 
 ---
 
-## Architectural Rules
+## Versioning
 
-This repository follows strict architecture boundaries.
+Current version: `0.2.0`
 
-### Canonical math belongs in:
+This release introduces:
 
-```
-rqm-core
-```
-
-This includes:
-
-* quaternion algebra
-* spinor normalization
-* Bloch conversions
-* SU(2) matrix generation
+* compiler-based architecture
+* `BraketBackend` abstraction
+* clean translation/execution separation
+* backward-compatibility shims (deprecated)
 
 ---
 
-### `rqm-braket` must NOT implement:
+## Roadmap
 
-* quaternion math
-* spinor math
-* Bloch sphere math
-* SU(2) algebra
+Future improvements may include:
 
-All such functionality must be imported from:
-
-```
-rqm_core
-```
-
----
-
-## Project Status
-
-Initial release goal:
-
-* single-qubit translation
-* Braket LocalSimulator execution
-* minimal device wrapper
-* example circuits
-
-Future versions may add:
-
-* multi-qubit translators
-* device calibration helpers
+* parameter binding support
+* batched execution
 * hybrid Braket workflows
-* expanded result utilities
+* richer result analysis
+* multi-qubit optimization paths
 
 ---
 
@@ -235,4 +314,3 @@ Future versions may add:
 MIT License
 
 Copyright (c) RQM Technologies
-- See `AGENTS.md` for full contribution rules.
