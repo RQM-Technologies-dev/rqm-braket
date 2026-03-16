@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rqm-braket"
-version = "0.1.0"
-description = "AWS Braket bridge layer for the Resonant Quantum Mechanics ecosystem."
+version = "0.2.0"
+description = "Amazon Braket backend adapter for the RQM ecosystem."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -17,11 +17,8 @@ keywords = [
   "quantum",
   "aws-braket",
   "braket",
-  "quaternion",
-  "spinor",
-  "bloch",
-  "su2",
-  "quantum-computing"
+  "quantum-computing",
+  "quantum-backend"
 ]
 classifiers = [
   "Development Status :: 3 - Alpha",
@@ -38,7 +35,6 @@ classifiers = [
   "Topic :: Software Development :: Libraries :: Python Modules"
 ]
 dependencies = [
-  "rqm-core>=0.1.0",
   "amazon-braket-sdk>=1.80.0"
 ]
 

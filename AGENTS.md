@@ -78,17 +78,12 @@ If functionality does not exist in `rqm-core`:
 
 Acceptable code includes:
 
-### Translators
+### Translation layer
 
-Convert RQM objects to Braket circuits.
+Converts compiled program objects (from `rqm-compiler`) to Braket circuits.
 
-Examples:
-
-```
-spinor_to_circuit
-bloch_to_circuit
-quaternion_to_circuit
-```
+Primary class: `BraketTranslator`
+Convenience function: `compile_to_braket_circuit(compiled_program)`
 
 ---
 
@@ -104,12 +99,18 @@ BraketResult
 
 ---
 
-### Device Helpers
+### Execution Helpers
 
 Utilities that run circuits on:
 
-- LocalSimulator
-- AWS Braket devices
+- LocalSimulator (`run_local`)
+- AWS Braket devices (`run_device`)
+
+---
+
+### Backend Object
+
+Unified entry point: `BraketBackend`
 
 ---
 
@@ -153,10 +154,13 @@ Follow these guidelines:
 
 | File | Responsibility |
 |---|---|
-| `translators.py` | RQM gate/state → Braket `Circuit` translation |
+| `translator.py` | `BraketTranslator`, `RQMGate`, `compile_to_braket_circuit` |
+| `translators.py` | Backward-compat shim; legacy dict-based `to_braket_circuit` |
+| `execution.py` | `run_local` and `run_device` (accept Circuit or compiled program) |
+| `devices.py` | Backward-compat shim re-exporting from `execution.py` |
+| `backend.py` | `BraketBackend` unified backend object |
 | `circuits.py` | Lightweight demo circuit builders (Bell, GHZ, etc.) |
 | `results.py` | `BraketResult` wrapper around Braket task results |
-| `devices.py` | `run_local` and `run_device` execution helpers |
 | `__init__.py` | Re-exports the public API only |
 
 ---

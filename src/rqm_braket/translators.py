@@ -2,122 +2,66 @@
 rqm_braket.translators
 ======================
 
-Translators from RQM-side gate/circuit representations into Amazon Braket
-``Circuit`` objects.
+Backward-compatibility shim.
 
-No canonical math lives here.  When RQM gate or state objects are needed,
-they are imported from ``rqm-core``.  The functions in this module handle
-only the minimal parameterisation required to express RQM representations
-as Braket gate arguments.
+The canonical translation API has moved to :mod:`rqm_braket.translator`.
+This module re-exports the current public symbols for backward compatibility
+and provides the dict-accepting :func:`to_braket_circuit` convenience
+function for legacy callers.
+
+.. deprecated::
+    Import directly from :mod:`rqm_braket.translator` for new code:
+
+    >>> from rqm_braket.translator import RQMGate, compile_to_braket_circuit
+
+Note
+----
+``spinor_to_circuit``, ``bloch_to_circuit``, and ``quaternion_to_circuit``
+have been **removed** from this package.  Those functions contained
+canonical spinor / Bloch / SU(2) mathematics that belongs in ``rqm-core``.
+When ``rqm-core`` exposes the relevant APIs they will be re-added as thin
+delegation wrappers.
 """
 
 from __future__ import annotations
 
-import cmath
-import math
-from dataclasses import dataclass
 from typing import Any, Sequence, Union
 
 from braket.circuits import Circuit
 
-# ---------------------------------------------------------------------------
-# Gate name → Braket Circuit method mapping
-# ---------------------------------------------------------------------------
-
-#: Maps a canonical RQM / standard gate name to the corresponding no-argument
-#: Braket ``Circuit`` method name.
-SINGLE_QUBIT_GATES: dict[str, str] = {
-    "H": "h",
-    "X": "x",
-    "Y": "y",
-    "Z": "z",
-    "S": "s",
-    "T": "t",
-    "I": "i",
-    "V": "v",
-}
-
-#: Maps a canonical gate name to the corresponding *angled* Braket method name.
-#: These gates require a single angle argument (in radians).
-ROTATION_GATES: dict[str, str] = {
-    "RX": "rx",
-    "RY": "ry",
-    "RZ": "rz",
-    "PHASESHIFT": "phaseshift",
-}
-
-#: Maps a canonical two-qubit gate name to the Braket method name.
-#: Each entry expects (control, target) qubits.
-TWO_QUBIT_GATES: dict[str, str] = {
-    "CNOT": "cnot",
-    "CX": "cnot",
-    "CY": "cy",
-    "CZ": "cz",
-    "SWAP": "swap",
-    "ISWAP": "iswap",
-}
-
+from rqm_braket.translator import (
+    ROTATION_GATES,
+    SINGLE_QUBIT_GATES,
+    TWO_QUBIT_GATES,
+    BraketTranslator,
+    RQMGate,
+    compile_to_braket_circuit,
+)
 
 # ---------------------------------------------------------------------------
-# RQMGate dataclass
+# Gate descriptor types (kept for backward compat)
 # ---------------------------------------------------------------------------
 
-
-@dataclass
-class RQMGate:
-    """Typed descriptor for a single gate in an RQM gate sequence.
-
-    This is the structured alternative to the plain ``dict`` gate descriptor
-    format.  Both forms are accepted by :func:`to_braket_circuit`.
-
-    Attributes
-    ----------
-    gate:
-        Gate name, e.g. ``"H"``, ``"CNOT"``, ``"RX"``.  Case-insensitive.
-    target:
-        Target qubit index.
-    control:
-        Control qubit index (two-qubit gates only; ``None`` for single-qubit
-        gates).
-    angle:
-        Rotation angle in radians (rotation gates only; ``None`` otherwise).
-
-    Examples
-    --------
-    >>> from rqm_braket.translators import RQMGate, to_braket_circuit
-    >>> seq = [RQMGate(gate="H", target=0), RQMGate(gate="CNOT", target=1, control=0)]
-    >>> circuit = to_braket_circuit(seq, n_qubits=2)
-    """
-
-    gate: str
-    target: int
-    control: int | None = None
-    angle: float | None = None
-
-
-# ---------------------------------------------------------------------------
-# Gate descriptor type
-# ---------------------------------------------------------------------------
-
-#: A gate descriptor is either an :class:`RQMGate` instance or a plain dict
-#: with at minimum a ``"gate"`` key.
-#:
-#: Plain dict form — single-qubit gates::
-#:
-#:     {"gate": "H",  "target": 0}
-#:     {"gate": "RX", "target": 0, "angle": 1.5707963}
-#:
-#: Plain dict form — two-qubit gates::
-#:
-#:     {"gate": "CNOT", "control": 0, "target": 1}
+#: A plain ``dict`` gate descriptor.
 GateDescriptor = dict[str, Any]
 
-#: Accepted input type for a single gate entry in a gate sequence.
+#: Accepted input type for :func:`to_braket_circuit`.
 GateInput = Union[RQMGate, GateDescriptor]
+
+__all__ = [
+    "RQMGate",
+    "GateDescriptor",
+    "GateInput",
+    "SINGLE_QUBIT_GATES",
+    "ROTATION_GATES",
+    "TWO_QUBIT_GATES",
+    "to_braket_circuit",
+    "compile_to_braket_circuit",
+]
 
 
 # ---------------------------------------------------------------------------
-# Public translator
+# Backward-compat to_braket_circuit (accepts dicts or RQMGate)
 # ---------------------------------------------------------------------------
 
 
@@ -125,350 +69,62 @@ def to_braket_circuit(
     gate_sequence: Sequence[GateInput],
     n_qubits: int | None = None,
 ) -> Circuit:
-    """Translate a sequence of RQM gate descriptors into a Braket ``Circuit``.
+    """Translate a sequence of gate descriptors into a Braket ``Circuit``.
+
+    This is the legacy dict-accepting interface.  For new code prefer
+    :func:`rqm_braket.translator.compile_to_braket_circuit` with
+    :class:`~rqm_braket.translator.RQMGate` instances.
 
     Each gate descriptor is either an :class:`RQMGate` instance or a ``dict``
     with the following keys:
 
-    * ``"gate"`` *(str, required)* — gate name, e.g. ``"H"``, ``"CNOT"``, ``"RX"``.
-    * ``"target"`` *(int, required for single-qubit and two-qubit gates)* — target qubit index.
-    * ``"control"`` *(int, required for two-qubit gates)* — control qubit index.
-    * ``"angle"`` *(float, required for rotation gates)* — rotation angle in radians.
+    * ``"gate"`` — gate name (required).
+    * ``"target"`` — target qubit index (required).
+    * ``"control"`` — control qubit index (two-qubit gates only).
+    * ``"angle"`` — rotation angle in radians (rotation gates only).
 
-    Both :class:`RQMGate` instances and plain dicts may be mixed freely in the
-    same sequence.
+    Both forms may be mixed in the same sequence.
 
     Parameters
     ----------
     gate_sequence:
-        Ordered list of gate descriptors to apply.  Each entry is either an
-        :class:`RQMGate` or a ``dict``.
+        Ordered list of gate descriptors.
     n_qubits:
-        Optional total qubit count.  When provided, qubits ``0..n_qubits-1``
-        are allocated up front via identity gates so that the circuit width is
-        predictable.  When ``None`` (default), width is inferred from the
-        gates applied.
+        Ignored.  Kept for backward-API compatibility.
 
     Returns
     -------
     braket.circuits.Circuit
-        A Braket circuit that applies the specified gates in order.
-
-    Raises
-    ------
-    ValueError
-        If a gate name is not recognised or required keys are missing.
-
-    Examples
-    --------
-    >>> from rqm_braket.translators import RQMGate, to_braket_circuit
-    >>> # Using RQMGate (typed)
-    >>> seq = [RQMGate(gate="H", target=0), RQMGate(gate="CNOT", target=1, control=0)]
-    >>> circuit = to_braket_circuit(seq, n_qubits=2)
-    >>> # Using plain dicts (backward compatible)
-    >>> seq = [{"gate": "H", "target": 0}, {"gate": "CNOT", "control": 0, "target": 1}]
-    >>> circuit = to_braket_circuit(seq, n_qubits=2)
     """
-    circuit = Circuit()
-
-    for raw in gate_sequence:
-        descriptor = _normalise_gate_input(raw)
-        gate_name = str(descriptor.get("gate", "")).upper()
-
-        if gate_name in SINGLE_QUBIT_GATES:
-            target = _require_int(descriptor, "target", gate_name)
-            method = getattr(circuit, SINGLE_QUBIT_GATES[gate_name])
-            method(target)
-
-        elif gate_name in ROTATION_GATES:
-            target = _require_int(descriptor, "target", gate_name)
-            angle = _require_float(descriptor, "angle", gate_name)
-            method = getattr(circuit, ROTATION_GATES[gate_name])
-            method(target, angle)
-
-        elif gate_name in TWO_QUBIT_GATES:
-            control = _require_int(descriptor, "control", gate_name)
-            target = _require_int(descriptor, "target", gate_name)
-            method = getattr(circuit, TWO_QUBIT_GATES[gate_name])
-            method(control, target)
-
-        else:
-            raise ValueError(
-                f"Unknown gate '{gate_name}'. "
-                f"Supported single-qubit: {sorted(SINGLE_QUBIT_GATES)}. "
-                f"Supported rotation: {sorted(ROTATION_GATES)}. "
-                f"Supported two-qubit: {sorted(TWO_QUBIT_GATES)}."
-            )
-
-    return circuit
+    normalised = [_normalise_gate_input(raw) for raw in gate_sequence]
+    return BraketTranslator().to_circuit(normalised)
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Private helpers
 # ---------------------------------------------------------------------------
 
 
-def _normalise_gate_input(raw: GateInput) -> GateDescriptor:
-    """Convert an :class:`RQMGate` or dict to the internal dict form."""
+def _normalise_gate_input(raw: GateInput) -> RQMGate:
+    """Convert a dict or :class:`RQMGate` to an :class:`RQMGate`."""
     if isinstance(raw, RQMGate):
-        d: GateDescriptor = {"gate": raw.gate, "target": raw.target}
-        if raw.control is not None:
-            d["control"] = raw.control
-        if raw.angle is not None:
-            d["angle"] = raw.angle
-        return d
-    return raw
+        return raw
+    gate = str(raw.get("gate", ""))
+    target = int(raw["target"])
+    control = int(raw["control"]) if "control" in raw else None
+    angle = float(raw["angle"]) if "angle" in raw else None
+    return RQMGate(gate=gate, target=target, control=control, angle=angle)
 
 
 def _require_int(descriptor: GateDescriptor, key: str, gate_name: str) -> int:
-    """Extract a required integer key from a gate descriptor."""
+    """Extract a required integer key from a gate descriptor dict."""
     if key not in descriptor:
         raise ValueError(f"Gate '{gate_name}' requires a '{key}' key.")
     return int(descriptor[key])
 
 
 def _require_float(descriptor: GateDescriptor, key: str, gate_name: str) -> float:
-    """Extract a required float key from a gate descriptor."""
+    """Extract a required float key from a gate descriptor dict."""
     if key not in descriptor:
         raise ValueError(f"Gate '{gate_name}' requires a '{key}' key.")
     return float(descriptor[key])
-
-
-# ---------------------------------------------------------------------------
-# RQM object → circuit translators
-# ---------------------------------------------------------------------------
-
-
-def spinor_to_circuit(
-    spinor: Sequence[complex],
-    qubit: int = 0,
-) -> Circuit:
-    """Translate a single-qubit spinor [α, β] into a Braket state-prep circuit.
-
-    Prepares the state α|0⟩ + β|1⟩ from |0⟩ using an Ry(θ) followed by
-    Rz(φ) decomposition, where:
-
-    * θ = 2·arccos(|α_normalised|)
-    * φ = arg(β_normalised) − arg(α_normalised)
-
-    Note: canonical spinor operations (normalisation, Bloch projection, etc.)
-    belong in ``rqm-core``.  This function only maps the spinor components to
-    Braket gate parameters.
-
-    Parameters
-    ----------
-    spinor:
-        A two-element sequence ``[α, β]`` of (possibly complex) amplitudes
-        representing the qubit state α|0⟩ + β|1⟩.  The spinor need not be
-        pre-normalised; it is normalised internally.
-    qubit:
-        Target qubit index (default 0).
-
-    Returns
-    -------
-    braket.circuits.Circuit
-        A single-qubit state-preparation circuit.
-
-    Raises
-    ------
-    ValueError
-        If the spinor has zero norm or does not have exactly two elements.
-
-    Examples
-    --------
-    >>> from rqm_braket.translators import spinor_to_circuit
-    >>> circuit = spinor_to_circuit([1, 0])   # |0⟩ — empty circuit
-    >>> circuit = spinor_to_circuit([0, 1])   # |1⟩ — Ry(π)
-    >>> circuit = spinor_to_circuit([1, 1])   # |+⟩ — Ry(π/2)
-    """
-    if len(spinor) != 2:
-        raise ValueError(
-            f"spinor must have exactly 2 elements, got {len(spinor)}."
-        )
-
-    alpha = complex(spinor[0])
-    beta = complex(spinor[1])
-
-    # TODO: delegate spinor normalisation to rqm-core once
-    #       rqm_core.spinor.normalize() is available.
-    #       Propose: rqm_core.spinor.normalize(spinor) → (alpha, beta)
-    norm = math.sqrt(abs(alpha) ** 2 + abs(beta) ** 2)
-    if norm < 1e-12:
-        raise ValueError("Spinor has zero norm.")
-    alpha /= norm
-    beta /= norm
-
-    # TODO: delegate Bloch angle extraction to rqm-core once
-    #       rqm_core.spinor.to_bloch_angles() is available.
-    #       Propose: rqm_core.spinor.to_bloch_angles(alpha, beta) → (theta, phi)
-    # θ = 2·arccos(|α|), clamped to [0, 1] to guard against floating-point noise
-    theta = 2.0 * math.acos(min(1.0, abs(alpha)))
-    # Relative phase φ = arg(β) − arg(α)
-    phi = cmath.phase(beta) - cmath.phase(alpha)
-
-    circuit = Circuit()
-    if abs(theta) > 1e-10:
-        circuit.ry(qubit, theta)
-    if abs(phi) > 1e-10:
-        circuit.rz(qubit, phi)
-    return circuit
-
-
-def bloch_to_circuit(
-    bloch_vector: Sequence[float],
-    qubit: int = 0,
-) -> Circuit:
-    """Translate a Bloch sphere vector [x, y, z] into a Braket state-prep circuit.
-
-    Prepares the qubit state corresponding to the point (x, y, z) on the
-    Bloch sphere from |0⟩ using Ry(θ) followed by Rz(φ), where:
-
-    * θ = arccos(z)   (polar angle from the north pole)
-    * φ = atan2(y, x)  (azimuthal angle)
-
-    Note: canonical Bloch sphere conversions belong in ``rqm-core``.  This
-    function only maps the Bloch vector components to Braket gate parameters.
-
-    Parameters
-    ----------
-    bloch_vector:
-        A three-element sequence ``[x, y, z]`` representing a point on (or
-        inside) the Bloch sphere.  For a pure state the vector should have
-        unit length; mixed states (|vector| < 1) are accepted but only the
-        direction is used.
-    qubit:
-        Target qubit index (default 0).
-
-    Returns
-    -------
-    braket.circuits.Circuit
-        A single-qubit state-preparation circuit.
-
-    Raises
-    ------
-    ValueError
-        If ``bloch_vector`` does not have exactly three elements or is the
-        zero vector.
-
-    Examples
-    --------
-    >>> from rqm_braket.translators import bloch_to_circuit
-    >>> circuit = bloch_to_circuit([0, 0,  1])   # north pole → |0⟩
-    >>> circuit = bloch_to_circuit([0, 0, -1])   # south pole → |1⟩
-    >>> circuit = bloch_to_circuit([1, 0,  0])   # +x → |+⟩
-    """
-    if len(bloch_vector) != 3:
-        raise ValueError(
-            f"bloch_vector must have exactly 3 elements, got {len(bloch_vector)}."
-        )
-
-    x, y, z = float(bloch_vector[0]), float(bloch_vector[1]), float(bloch_vector[2])
-    r = math.sqrt(x ** 2 + y ** 2 + z ** 2)
-    if r < 1e-12:
-        raise ValueError("Bloch vector has zero magnitude.")
-
-    # TODO: delegate Bloch vector normalisation and spherical-angle extraction
-    #       to rqm-core once rqm_core.bloch.to_angles() is available.
-    #       Propose: rqm_core.bloch.to_angles(bloch_vector) → (theta, phi)
-    # Normalise to unit sphere
-    x, y, z = x / r, y / r, z / r
-
-    # Polar angle θ ∈ [0, π], clamped for numerical safety
-    theta = math.acos(max(-1.0, min(1.0, z)))
-    # Azimuthal angle φ ∈ (−π, π]
-    phi = math.atan2(y, x)
-
-    circuit = Circuit()
-    if abs(theta) > 1e-10:
-        circuit.ry(qubit, theta)
-    if abs(phi) > 1e-10:
-        circuit.rz(qubit, phi)
-    return circuit
-
-
-def quaternion_to_circuit(
-    quaternion: Sequence[float],
-    qubit: int = 0,
-) -> Circuit:
-    """Translate a unit quaternion [w, x, y, z] into a single-qubit Braket circuit.
-
-    Maps a unit quaternion to the corresponding SU(2) gate via a ZYZ Euler
-    angle decomposition:  Rz(γ) → Ry(β) → Rz(α), where:
-
-    * β = 2·arccos(√(w² + z²))
-    * α = −arg(w − iz) + arg(y − ix)
-    * γ = −arg(w − iz) − arg(y − ix)
-
-    Note: canonical quaternion algebra and SU(2) construction belong in
-    ``rqm-core``.  This function only maps the quaternion components to
-    Braket gate parameters via standard Euler decomposition.
-
-    Parameters
-    ----------
-    quaternion:
-        A four-element sequence ``[w, x, y, z]`` representing a unit
-        quaternion.  The quaternion is normalised internally.
-    qubit:
-        Target qubit index (default 0).
-
-    Returns
-    -------
-    braket.circuits.Circuit
-        A single-qubit circuit implementing the SU(2) rotation.
-
-    Raises
-    ------
-    ValueError
-        If ``quaternion`` does not have exactly four elements or has zero norm.
-
-    Examples
-    --------
-    >>> from rqm_braket.translators import quaternion_to_circuit
-    >>> import math
-    >>> # Identity rotation
-    >>> circuit = quaternion_to_circuit([1, 0, 0, 0])
-    >>> # 180° rotation around Y axis
-    >>> circuit = quaternion_to_circuit([0, 0, 1, 0])
-    """
-    if len(quaternion) != 4:
-        raise ValueError(
-            f"quaternion must have exactly 4 elements, got {len(quaternion)}."
-        )
-
-    w, x, y, z = (float(v) for v in quaternion)
-    norm = math.sqrt(w ** 2 + x ** 2 + y ** 2 + z ** 2)
-    if norm < 1e-12:
-        raise ValueError("Quaternion has zero norm.")
-
-    # TODO: delegate quaternion normalisation and SU(2) Euler decomposition
-    #       to rqm-core once rqm_core.quaternion.to_euler_zyz() is available.
-    #       Propose: rqm_core.quaternion.to_euler_zyz(quaternion) → (alpha, beta, gamma)
-    w, x, y, z = w / norm, x / norm, y / norm, z / norm
-
-    # SU(2) matrix elements:
-    #   u00 = w − iz,  u10 = y − ix
-    # ZYZ Euler decomposition:
-    #   β = 2·arccos(|u00|) = 2·arccos(√(w²+z²))
-    #   phase_u00 = arg(w − iz),  phase_u10 = arg(y − ix)
-    #   α = −phase_u00 + phase_u10
-    #   γ = −phase_u00 − phase_u10
-
-    u00 = complex(w, -z)
-    u10 = complex(y, -x)
-
-    beta = 2.0 * math.acos(min(1.0, abs(u00)))
-    phase_u00 = cmath.phase(u00)
-    phase_u10 = cmath.phase(u10)
-
-    alpha = -phase_u00 + phase_u10
-    gamma = -phase_u00 - phase_u10
-
-    # Circuit applies Rz(γ) first, then Ry(β), then Rz(α)
-    circuit = Circuit()
-    if abs(gamma) > 1e-10:
-        circuit.rz(qubit, gamma)
-    if abs(beta) > 1e-10:
-        circuit.ry(qubit, beta)
-    if abs(alpha) > 1e-10:
-        circuit.rz(qubit, alpha)
-    return circuit

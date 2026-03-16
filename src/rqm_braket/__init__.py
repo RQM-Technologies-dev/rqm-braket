@@ -2,60 +2,55 @@
 rqm_braket
 ==========
 
-AWS Braket integration layer for the RQM ecosystem.
+Amazon Braket backend adapter for the RQM ecosystem.
+
+This package translates compiled quantum programs into Amazon Braket circuits
+and provides helpers for executing those circuits on the local simulator or
+on AWS Braket devices.
+
+``rqm-braket`` is a **backend bridge**, not a math engine.  All canonical
+mathematics (quaternion, spinor, Bloch, SU(2)) belongs in ``rqm-core``.
 
 Public API
 ----------
+BraketBackend
+    High-level backend object: compile, run locally, run on AWS device.
+
+BraketTranslator
+    Translates compiled programs / gate sequences into Braket ``Circuit``.
+
 RQMGate
-    Typed dataclass descriptor for a single gate (alternative to plain dicts).
+    Typed gate descriptor.  Satisfies the ``CompiledInstruction`` protocol.
 
-to_braket_circuit(gate_sequence, n_qubits=None)
-    Translate an RQM gate-descriptor sequence into a Braket ``Circuit``.
-    Accepts :class:`RQMGate` instances, plain ``dict`` descriptors, or a mix.
+compile_to_braket_circuit(program)
+    Convenience function: translate a compiled program to a Braket circuit.
 
-spinor_to_circuit(spinor, qubit=0)
-    Translate a spinor [α, β] into a single-qubit state-prep circuit.
+run_local(program_or_circuit, shots=100)
+    Execute on the local Braket state-vector simulator (no AWS credentials).
 
-bloch_to_circuit(bloch_vector, qubit=0)
-    Translate a Bloch vector [x, y, z] into a single-qubit state-prep circuit.
-
-quaternion_to_circuit(quaternion, qubit=0)
-    Translate a unit quaternion [w, x, y, z] into a single-qubit circuit.
-
-run_local(circuit, shots=100)
-    Execute a circuit on the local Braket state-vector simulator.
-
-run_device(circuit, device_arn, s3_folder, shots=100, **kwargs)
-    Execute a circuit on a remote AWS Braket device.
+run_device(program_or_circuit, device_arn, s3_folder, shots=100, **kwargs)
+    Execute on a remote AWS Braket device.
 
 BraketResult
     Friendly wrapper around Braket task results.
-
-Architecture note
------------------
-No canonical quaternion / spinor / Bloch / SU(2) math lives in this package.
-All canonical math is delegated to ``rqm-core``.
 """
 
-from rqm_braket.devices import run_device, run_local
+from rqm_braket.backend import BraketBackend
+from rqm_braket.execution import run_device, run_local
 from rqm_braket.results import BraketResult
-from rqm_braket.translators import (
-    RQMGate,
-    bloch_to_circuit,
-    quaternion_to_circuit,
-    spinor_to_circuit,
-    to_braket_circuit,
-)
+from rqm_braket.translator import BraketTranslator, RQMGate, compile_to_braket_circuit
+
+# Backward-compat re-export (not in __all__)
+from rqm_braket.translators import to_braket_circuit  # noqa: F401
 
 __all__ = [
+    "BraketBackend",
+    "BraketTranslator",
     "RQMGate",
-    "to_braket_circuit",
-    "spinor_to_circuit",
-    "bloch_to_circuit",
-    "quaternion_to_circuit",
+    "compile_to_braket_circuit",
     "run_local",
     "run_device",
     "BraketResult",
 ]
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
