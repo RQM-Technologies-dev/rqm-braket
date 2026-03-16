@@ -164,6 +164,10 @@ class RQMGate:
 # BraketTranslator
 # ---------------------------------------------------------------------------
 
+# NOTE:
+# Primary input type is rqm-compiler CompiledProgram.
+# RQMGate and dict support are transitional and may be removed in a future release.
+
 
 class BraketTranslator:
     """Translates compiled quantum programs into Amazon Braket ``Circuit`` objects.

@@ -92,6 +92,20 @@ def test_backend_run_local_bell_outcomes(backend: BraketBackend) -> None:
     assert not unexpected
 
 
+def test_compile_run_identity() -> None:
+    """End-to-end: compile a Bell program, run locally, verify both outcomes."""
+    program = [
+        RQMGate("H", target=0),
+        RQMGate("CNOT", control=0, target=1),
+    ]
+
+    backend = BraketBackend()
+    result = backend.run_local(program, shots=200)
+
+    assert "00" in result.counts
+    assert "11" in result.counts
+
+
 # ---------------------------------------------------------------------------
 # run_device — mocked (no AWS credentials needed)
 # ---------------------------------------------------------------------------
