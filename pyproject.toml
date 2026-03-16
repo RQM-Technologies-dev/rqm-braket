@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rqm-braket"
+version = "0.1.0"
+description = "Amazon Braket backend bridge for the RQM ecosystem"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "RQM Technologies", email = "dev@rqm-technologies.com" }]
+requires-python = ">=3.9"
+keywords = [
+    "quantum computing",
+    "amazon braket",
+    "rqm",
+    "quaternion",
+    "spinor",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "amazon-braket-sdk>=1.60.0",
+    "rqm-core>=0.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov",
+]
+
+[project.urls]
+Homepage = "https://github.com/RQM-Technologies-dev/rqm-braket"
+Repository = "https://github.com/RQM-Technologies-dev/rqm-braket"
+"Bug Tracker" = "https://github.com/RQM-Technologies-dev/rqm-braket/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
