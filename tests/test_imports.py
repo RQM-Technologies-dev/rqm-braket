@@ -16,6 +16,7 @@ def test_version_attribute() -> None:
 
 def test_public_api_symbols() -> None:
     """All documented public symbols must be accessible."""
+    assert rqm_braket.RQMGate is not None
     assert callable(rqm_braket.to_braket_circuit)
     assert callable(rqm_braket.spinor_to_circuit)
     assert callable(rqm_braket.bloch_to_circuit)

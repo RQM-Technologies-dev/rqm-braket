@@ -15,7 +15,8 @@ from __future__ import annotations
 
 import cmath
 import math
-from typing import Any, Sequence
+from dataclasses import dataclass
+from typing import Any, Sequence, Union
 
 from braket.circuits import Circuit
 
@@ -58,20 +59,61 @@ TWO_QUBIT_GATES: dict[str, str] = {
 
 
 # ---------------------------------------------------------------------------
+# RQMGate dataclass
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class RQMGate:
+    """Typed descriptor for a single gate in an RQM gate sequence.
+
+    This is the structured alternative to the plain ``dict`` gate descriptor
+    format.  Both forms are accepted by :func:`to_braket_circuit`.
+
+    Attributes
+    ----------
+    gate:
+        Gate name, e.g. ``"H"``, ``"CNOT"``, ``"RX"``.  Case-insensitive.
+    target:
+        Target qubit index.
+    control:
+        Control qubit index (two-qubit gates only; ``None`` for single-qubit
+        gates).
+    angle:
+        Rotation angle in radians (rotation gates only; ``None`` otherwise).
+
+    Examples
+    --------
+    >>> from rqm_braket.translators import RQMGate, to_braket_circuit
+    >>> seq = [RQMGate(gate="H", target=0), RQMGate(gate="CNOT", target=1, control=0)]
+    >>> circuit = to_braket_circuit(seq, n_qubits=2)
+    """
+
+    gate: str
+    target: int
+    control: int | None = None
+    angle: float | None = None
+
+
+# ---------------------------------------------------------------------------
 # Gate descriptor type
 # ---------------------------------------------------------------------------
 
-#: A gate descriptor is a plain dict with at minimum a ``"gate"`` key.
+#: A gate descriptor is either an :class:`RQMGate` instance or a plain dict
+#: with at minimum a ``"gate"`` key.
 #:
-#: Single-qubit gates::
+#: Plain dict form — single-qubit gates::
 #:
 #:     {"gate": "H",  "target": 0}
 #:     {"gate": "RX", "target": 0, "angle": 1.5707963}
 #:
-#: Two-qubit gates::
+#: Plain dict form — two-qubit gates::
 #:
 #:     {"gate": "CNOT", "control": 0, "target": 1}
 GateDescriptor = dict[str, Any]
+
+#: Accepted input type for a single gate entry in a gate sequence.
+GateInput = Union[RQMGate, GateDescriptor]
 
 
 # ---------------------------------------------------------------------------
@@ -80,22 +122,27 @@ GateDescriptor = dict[str, Any]
 
 
 def to_braket_circuit(
-    gate_sequence: Sequence[GateDescriptor],
+    gate_sequence: Sequence[GateInput],
     n_qubits: int | None = None,
 ) -> Circuit:
     """Translate a sequence of RQM gate descriptors into a Braket ``Circuit``.
 
-    Each gate descriptor is a ``dict`` with the following keys:
+    Each gate descriptor is either an :class:`RQMGate` instance or a ``dict``
+    with the following keys:
 
     * ``"gate"`` *(str, required)* — gate name, e.g. ``"H"``, ``"CNOT"``, ``"RX"``.
     * ``"target"`` *(int, required for single-qubit and two-qubit gates)* — target qubit index.
     * ``"control"`` *(int, required for two-qubit gates)* — control qubit index.
     * ``"angle"`` *(float, required for rotation gates)* — rotation angle in radians.
 
+    Both :class:`RQMGate` instances and plain dicts may be mixed freely in the
+    same sequence.
+
     Parameters
     ----------
     gate_sequence:
-        Ordered list of gate descriptors to apply.
+        Ordered list of gate descriptors to apply.  Each entry is either an
+        :class:`RQMGate` or a ``dict``.
     n_qubits:
         Optional total qubit count.  When provided, qubits ``0..n_qubits-1``
         are allocated up front via identity gates so that the circuit width is
@@ -114,13 +161,18 @@ def to_braket_circuit(
 
     Examples
     --------
-    >>> from rqm_braket.translators import to_braket_circuit
+    >>> from rqm_braket.translators import RQMGate, to_braket_circuit
+    >>> # Using RQMGate (typed)
+    >>> seq = [RQMGate(gate="H", target=0), RQMGate(gate="CNOT", target=1, control=0)]
+    >>> circuit = to_braket_circuit(seq, n_qubits=2)
+    >>> # Using plain dicts (backward compatible)
     >>> seq = [{"gate": "H", "target": 0}, {"gate": "CNOT", "control": 0, "target": 1}]
     >>> circuit = to_braket_circuit(seq, n_qubits=2)
     """
     circuit = Circuit()
 
-    for descriptor in gate_sequence:
+    for raw in gate_sequence:
+        descriptor = _normalise_gate_input(raw)
         gate_name = str(descriptor.get("gate", "")).upper()
 
         if gate_name in SINGLE_QUBIT_GATES:
@@ -154,6 +206,18 @@ def to_braket_circuit(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _normalise_gate_input(raw: GateInput) -> GateDescriptor:
+    """Convert an :class:`RQMGate` or dict to the internal dict form."""
+    if isinstance(raw, RQMGate):
+        d: GateDescriptor = {"gate": raw.gate, "target": raw.target}
+        if raw.control is not None:
+            d["control"] = raw.control
+        if raw.angle is not None:
+            d["angle"] = raw.angle
+        return d
+    return raw
 
 
 def _require_int(descriptor: GateDescriptor, key: str, gate_name: str) -> int:

@@ -6,6 +6,7 @@ import pytest
 from braket.circuits import Circuit
 
 from rqm_braket.translators import (
+    RQMGate,
     bloch_to_circuit,
     quaternion_to_circuit,
     spinor_to_circuit,
@@ -359,3 +360,86 @@ def test_quaternion_unnormalised_accepted() -> None:
     circuit = quaternion_to_circuit([2, 0, 0, 0])  # same as [1, 0, 0, 0]
     assert isinstance(circuit, Circuit)
     assert len(circuit.instructions) == 0
+
+
+# ---------------------------------------------------------------------------
+# RQMGate dataclass
+# ---------------------------------------------------------------------------
+
+
+def test_rqmgate_single_qubit() -> None:
+    """RQMGate works as a typed alternative to dict descriptors."""
+    seq = [RQMGate(gate="H", target=0)]
+    circuit = to_braket_circuit(seq)
+    assert isinstance(circuit, Circuit)
+    assert circuit.qubit_count == 1
+
+
+def test_rqmgate_rotation() -> None:
+    """RQMGate with angle builds a rotation gate."""
+    seq = [RQMGate(gate="RX", target=0, angle=math.pi / 2)]
+    circuit = to_braket_circuit(seq)
+    assert isinstance(circuit, Circuit)
+    assert circuit.qubit_count == 1
+
+
+def test_rqmgate_two_qubit() -> None:
+    """RQMGate with control builds a two-qubit gate."""
+    seq = [RQMGate(gate="CNOT", target=1, control=0)]
+    circuit = to_braket_circuit(seq)
+    assert isinstance(circuit, Circuit)
+    assert circuit.qubit_count == 2
+
+
+def test_rqmgate_bell_sequence() -> None:
+    """H + CNOT via RQMGate produces a valid Bell-state circuit."""
+    seq = [
+        RQMGate(gate="H", target=0),
+        RQMGate(gate="CNOT", target=1, control=0),
+    ]
+    circuit = to_braket_circuit(seq, n_qubits=2)
+    assert isinstance(circuit, Circuit)
+    assert circuit.qubit_count == 2
+
+
+def test_rqmgate_mixed_with_dicts() -> None:
+    """RQMGate and plain dict descriptors can be mixed in the same sequence."""
+    seq: list = [
+        RQMGate(gate="H", target=0),
+        {"gate": "CNOT", "control": 0, "target": 1},
+    ]
+    circuit = to_braket_circuit(seq)
+    assert isinstance(circuit, Circuit)
+    assert circuit.qubit_count == 2
+
+
+def test_rqmgate_defaults() -> None:
+    """Optional fields default to None."""
+    gate = RQMGate(gate="H", target=0)
+    assert gate.gate == "H"
+    assert gate.target == 0
+    assert gate.control is None
+    assert gate.angle is None
+
+
+def test_rqmgate_case_insensitive() -> None:
+    """Gate names are normalised to upper-case, so lowercase works."""
+    seq = [RQMGate(gate="h", target=0)]
+    circuit = to_braket_circuit(seq)
+    assert isinstance(circuit, Circuit)
+
+
+def test_rqmgate_unknown_gate_raises() -> None:
+    """RQMGate with an unrecognised gate name raises ValueError."""
+    seq = [RQMGate(gate="FOOBAR", target=0)]
+    with pytest.raises(ValueError, match="Unknown gate"):
+        to_braket_circuit(seq)
+
+
+def test_rqmgate_importable_from_top_level() -> None:
+    """RQMGate is accessible from the top-level rqm_braket package."""
+    import rqm_braket
+
+    assert rqm_braket.RQMGate is RQMGate
+    gate = rqm_braket.RQMGate(gate="H", target=0)
+    assert gate.gate == "H"
