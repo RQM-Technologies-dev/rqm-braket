@@ -2,12 +2,21 @@
 rqm_braket
 ==========
 
-Amazon Braket backend bridge for the RQM ecosystem.
+AWS Braket integration layer for the RQM ecosystem.
 
 Public API
 ----------
 to_braket_circuit(gate_sequence, n_qubits=None)
     Translate an RQM gate-descriptor sequence into a Braket ``Circuit``.
+
+spinor_to_circuit(spinor, qubit=0)
+    Translate a spinor [α, β] into a single-qubit state-prep circuit.
+
+bloch_to_circuit(bloch_vector, qubit=0)
+    Translate a Bloch vector [x, y, z] into a single-qubit state-prep circuit.
+
+quaternion_to_circuit(quaternion, qubit=0)
+    Translate a unit quaternion [w, x, y, z] into a single-qubit circuit.
 
 run_local(circuit, shots=100)
     Execute a circuit on the local Braket state-vector simulator.
@@ -26,10 +35,18 @@ All canonical math is delegated to ``rqm-core``.
 
 from rqm_braket.devices import run_device, run_local
 from rqm_braket.results import BraketResult
-from rqm_braket.translators import to_braket_circuit
+from rqm_braket.translators import (
+    bloch_to_circuit,
+    quaternion_to_circuit,
+    spinor_to_circuit,
+    to_braket_circuit,
+)
 
 __all__ = [
     "to_braket_circuit",
+    "spinor_to_circuit",
+    "bloch_to_circuit",
+    "quaternion_to_circuit",
     "run_local",
     "run_device",
     "BraketResult",

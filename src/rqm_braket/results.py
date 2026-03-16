@@ -94,6 +94,50 @@ class BraketResult:
         except Exception:  # noqa: BLE001
             return {}
 
+    def most_likely_bitstring(self) -> str:
+        """Return the bitstring with the highest measurement count.
+
+        Returns
+        -------
+        str
+            The most frequently observed outcome bitstring, e.g. ``"00"``.
+
+        Raises
+        ------
+        ValueError
+            If no measurements were recorded (zero shots).
+
+        Examples
+        --------
+        >>> result.most_likely_bitstring()
+        '00'
+        """
+        counts = self.counts
+        if not counts:
+            raise ValueError("No measurements recorded (zero shots).")
+        return max(counts, key=counts.__getitem__)
+
+    def probability_of(self, bitstring: str) -> float:
+        """Return the empirical probability of a specific outcome bitstring.
+
+        Parameters
+        ----------
+        bitstring:
+            The outcome bitstring to look up, e.g. ``"00"`` or ``"11"``.
+
+        Returns
+        -------
+        float
+            Probability in [0, 1].  Returns ``0.0`` if the bitstring was
+            never observed.
+
+        Examples
+        --------
+        >>> result.probability_of("00")
+        0.48
+        """
+        return self.probabilities.get(bitstring, 0.0)
+
     # ------------------------------------------------------------------
     # Dunder helpers
     # ------------------------------------------------------------------

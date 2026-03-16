@@ -5,7 +5,12 @@ import math
 import pytest
 from braket.circuits import Circuit
 
-from rqm_braket.translators import to_braket_circuit
+from rqm_braket.translators import (
+    bloch_to_circuit,
+    quaternion_to_circuit,
+    spinor_to_circuit,
+    to_braket_circuit,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -198,3 +203,159 @@ def test_empty_sequence() -> None:
     circuit = to_braket_circuit([])
     assert isinstance(circuit, Circuit)
     assert circuit.qubit_count == 0
+
+
+# ---------------------------------------------------------------------------
+# spinor_to_circuit
+# ---------------------------------------------------------------------------
+
+
+def test_spinor_zero_state_is_identity() -> None:
+    """|0⟩ spinor [1, 0] produces an empty circuit (no gates needed)."""
+    circuit = spinor_to_circuit([1, 0])
+    assert isinstance(circuit, Circuit)
+    # No instructions — the state is already |0⟩
+    assert len(circuit.instructions) == 0
+
+
+def test_spinor_one_state() -> None:
+    """|1⟩ spinor [0, 1] produces a non-empty circuit."""
+    circuit = spinor_to_circuit([0, 1])
+    assert isinstance(circuit, Circuit)
+    assert len(circuit.instructions) > 0
+
+
+def test_spinor_superposition() -> None:
+    """|+⟩ spinor [1, 1] (unnormalised) produces a valid circuit."""
+    circuit = spinor_to_circuit([1, 1])
+    assert isinstance(circuit, Circuit)
+
+
+def test_spinor_complex_amplitudes() -> None:
+    """Complex spinor components are accepted."""
+    import cmath
+    circuit = spinor_to_circuit([1, 1j])
+    assert isinstance(circuit, Circuit)
+
+
+def test_spinor_custom_qubit() -> None:
+    """The qubit index is respected."""
+    circuit = spinor_to_circuit([0, 1], qubit=2)
+    assert isinstance(circuit, Circuit)
+    assert 2 in circuit.qubits
+
+
+def test_spinor_zero_norm_raises() -> None:
+    with pytest.raises(ValueError, match="zero norm"):
+        spinor_to_circuit([0, 0])
+
+
+def test_spinor_wrong_length_raises() -> None:
+    with pytest.raises(ValueError, match="2 elements"):
+        spinor_to_circuit([1, 0, 0])
+
+
+def test_spinor_returns_circuit_type() -> None:
+    circuit = spinor_to_circuit([1, 0])
+    assert isinstance(circuit, Circuit)
+
+
+# ---------------------------------------------------------------------------
+# bloch_to_circuit
+# ---------------------------------------------------------------------------
+
+
+def test_bloch_north_pole_is_identity() -> None:
+    """North pole [0, 0, 1] represents |0⟩ — no gates needed."""
+    circuit = bloch_to_circuit([0, 0, 1])
+    assert isinstance(circuit, Circuit)
+    assert len(circuit.instructions) == 0
+
+
+def test_bloch_south_pole() -> None:
+    """South pole [0, 0, -1] represents |1⟩ — non-empty circuit."""
+    circuit = bloch_to_circuit([0, 0, -1])
+    assert isinstance(circuit, Circuit)
+    assert len(circuit.instructions) > 0
+
+
+def test_bloch_plus_x() -> None:
+    """+x Bloch vector represents |+⟩."""
+    circuit = bloch_to_circuit([1, 0, 0])
+    assert isinstance(circuit, Circuit)
+
+
+def test_bloch_plus_y() -> None:
+    circuit = bloch_to_circuit([0, 1, 0])
+    assert isinstance(circuit, Circuit)
+
+
+def test_bloch_custom_qubit() -> None:
+    circuit = bloch_to_circuit([1, 0, 0], qubit=1)
+    assert isinstance(circuit, Circuit)
+    assert 1 in circuit.qubits
+
+
+def test_bloch_zero_vector_raises() -> None:
+    with pytest.raises(ValueError, match="zero magnitude"):
+        bloch_to_circuit([0, 0, 0])
+
+
+def test_bloch_wrong_length_raises() -> None:
+    with pytest.raises(ValueError, match="3 elements"):
+        bloch_to_circuit([0, 1])
+
+
+def test_bloch_unnormalised_vector() -> None:
+    """Unnormalised vectors are accepted (direction is used, magnitude ignored)."""
+    circuit = bloch_to_circuit([0, 0, 5])
+    assert isinstance(circuit, Circuit)
+    assert len(circuit.instructions) == 0  # same direction as north pole
+
+
+# ---------------------------------------------------------------------------
+# quaternion_to_circuit
+# ---------------------------------------------------------------------------
+
+
+def test_quaternion_identity_is_empty() -> None:
+    """Identity quaternion [1, 0, 0, 0] produces an empty circuit."""
+    circuit = quaternion_to_circuit([1, 0, 0, 0])
+    assert isinstance(circuit, Circuit)
+    assert len(circuit.instructions) == 0
+
+
+def test_quaternion_y_rotation() -> None:
+    """180° rotation around Y axis [0, 0, 1, 0] produces a circuit."""
+    circuit = quaternion_to_circuit([0, 0, 1, 0])
+    assert isinstance(circuit, Circuit)
+    assert len(circuit.instructions) > 0
+
+
+def test_quaternion_x_rotation() -> None:
+    """90° rotation around X axis."""
+    half = math.sqrt(0.5)
+    circuit = quaternion_to_circuit([half, half, 0, 0])
+    assert isinstance(circuit, Circuit)
+
+
+def test_quaternion_custom_qubit() -> None:
+    circuit = quaternion_to_circuit([1, 0, 0, 0], qubit=3)
+    assert isinstance(circuit, Circuit)
+
+
+def test_quaternion_zero_norm_raises() -> None:
+    with pytest.raises(ValueError, match="zero norm"):
+        quaternion_to_circuit([0, 0, 0, 0])
+
+
+def test_quaternion_wrong_length_raises() -> None:
+    with pytest.raises(ValueError, match="4 elements"):
+        quaternion_to_circuit([1, 0, 0])
+
+
+def test_quaternion_unnormalised_accepted() -> None:
+    """Unnormalised quaternions are accepted (normalised internally)."""
+    circuit = quaternion_to_circuit([2, 0, 0, 0])  # same as [1, 0, 0, 0]
+    assert isinstance(circuit, Circuit)
+    assert len(circuit.instructions) == 0
