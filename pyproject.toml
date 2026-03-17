@@ -39,7 +39,8 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/RQM-Technologies-dev/rqm-braket"
+Homepage = "https://rqmtechnologies.com"
+Documentation = "https://docs.rqmtechnologies.com"
 Source = "https://github.com/RQM-Technologies-dev/rqm-braket"
 Issues = "https://github.com/RQM-Technologies-dev/rqm-braket/issues"
 
