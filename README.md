@@ -96,23 +96,75 @@ result.most_likely_bitstring()
 
 ---
 
+### 4. Convenience Bridges (rqm-core delegation)
+
+`rqm-braket` exposes thin bridge functions for users who want to prepare
+quantum states without going through the compiler first.
+
+> **These bridges are not the primary API.**  
+> For production use, prefer the compiler-first path.
+>
+> ```
+> rqm-compiler → compiled_program → backend.run(...)
+> ```
+>
+> Bridges are intended for students, quick experiments, and direct state
+> preparation.  All underlying mathematics is handled by `rqm-core`.
+
+#### `spinor_to_circuit(alpha, beta, target=0)`
+
+Prepares the qubit state `|ψ⟩ = α|0⟩ + β|1⟩` from the given spinor.
+
+Bloch-sphere math is delegated to `rqm_core.state_to_bloch`.
+
+```python
+import math
+from rqm_braket import spinor_to_circuit
+
+s = 1 / math.sqrt(2)
+circuit = spinor_to_circuit(s, s)   # prepares |+⟩
+```
+
+#### `bloch_to_circuit(theta, phi, target=0)`
+
+Prepares the qubit state parameterized by Bloch-sphere polar angles.
+
+```python
+import math
+from rqm_braket import bloch_to_circuit
+
+circuit = bloch_to_circuit(math.pi / 2, 0.0)  # prepares |+⟩
+```
+
+#### `Quaternion` (re-exported from rqm-core)
+
+The `Quaternion` class from `rqm-core` is re-exported for user convenience.
+All quaternion mathematics lives in `rqm-core`.
+
+```python
+from rqm_braket import Quaternion
+
+q = Quaternion.from_axis_angle("z", math.pi / 2)
+```
+
+---
+
 ## What This Package Does NOT Do
 
-`rqm-braket` deliberately does **not** include:
+`rqm-braket` does **not implement** canonical quantum mathematics.
 
-* quaternion math
-* spinor math
-* Bloch sphere logic
-* SU(2) algebra
-* circuit compilation logic
-* backend-agnostic instruction design
+It **delegates** all math operations to `rqm-core`:
 
-These belong to:
+| Operation | Owner |
+|-----------|-------|
+| Quaternion algebra | `rqm-core` |
+| Spinor normalization | `rqm-core` |
+| Bloch sphere conversions | `rqm-core` |
+| SU(2) matrix math | `rqm-core` |
+| Circuit compilation logic | `rqm-compiler` |
+| Backend-agnostic instruction design | `rqm-compiler` |
 
-```
-rqm-core
-rqm-compiler
-```
+The rule is: **rqm-braket may call math, but never define it.**
 
 ---
 
@@ -146,6 +198,59 @@ result = backend.run_local(program, shots=1000)
 
 print(result.counts)
 ```
+
+---
+
+## Usage Modes
+
+`rqm-braket` supports two entry points depending on your audience and use case.
+
+### Mode 1 — Compiler-first (recommended for production)
+
+```
+rqm-compiler → compiled_program → backend.run(...)
+```
+
+```python
+from rqm_braket import BraketBackend, RQMGate
+
+backend = BraketBackend()
+result = backend.run_local([
+    RQMGate("H", target=0),
+    RQMGate("CNOT", control=0, target=1),
+], shots=500)
+print(result.counts)
+```
+
+Intended for: researchers, engineers, production workflows.
+
+### Mode 2 — Bridge functions (convenient for exploration)
+
+```
+spinor_to_circuit(...)
+bloch_to_circuit(...)
+```
+
+```python
+import math
+from rqm_braket import spinor_to_circuit, bloch_to_circuit, run_local
+
+# From a spinor
+s = 1 / math.sqrt(2)
+circuit = spinor_to_circuit(s, s)
+result = run_local(circuit, shots=200)
+print(result.counts)
+
+# From Bloch angles
+circuit = bloch_to_circuit(math.pi / 2, 0.0)
+result = run_local(circuit, shots=200)
+print(result.counts)
+```
+
+Intended for: students, tutorials, quick experiments.
+
+> All quantum mathematics (Bloch conversion, spinor normalization) is
+> delegated to `rqm-core`.  `rqm-braket` only maps the results to gates.
 
 ---
 
@@ -189,6 +294,8 @@ examples/compiled_program_demo.py
 
 ## Public API
 
+### Core backend API
+
 ```python
 BraketBackend
 BraketTranslator
@@ -197,6 +304,14 @@ compile_to_braket_circuit
 run_local
 run_device
 BraketResult
+```
+
+### Convenience bridges (rqm-core delegation)
+
+```python
+spinor_to_circuit   # spinor (α, β) → Braket Circuit
+bloch_to_circuit    # Bloch angles (θ, φ) → Braket Circuit
+Quaternion          # re-exported from rqm-core
 ```
 
 ---
@@ -245,6 +360,22 @@ All tests are:
 ---
 
 ## Design Principles
+
+### Math Delegation
+
+`rqm-braket` does not implement canonical quantum mathematics.
+
+All physics and math operations are delegated to `rqm-core`:
+
+```
+rqm-core     = physics + math
+rqm-compiler = structure
+rqm-braket   = translation + execution
+```
+
+The rule: **rqm-braket may call math, but never define it.**
+
+---
 
 ### Thin Adapter Layer
 

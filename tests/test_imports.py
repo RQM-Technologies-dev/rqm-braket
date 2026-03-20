@@ -51,8 +51,9 @@ def test_submodule_imports() -> None:
 
 
 def test_removed_symbols_not_in_all() -> None:
-    """spinor_to_circuit, bloch_to_circuit, quaternion_to_circuit are not
-    in the public API."""
-    assert "spinor_to_circuit" not in rqm_braket.__all__
-    assert "bloch_to_circuit" not in rqm_braket.__all__
+    """quaternion_to_circuit is not in the public API (pending rqm-core ZYZ support).
+
+    spinor_to_circuit and bloch_to_circuit have been re-added as thin
+    delegation wrappers that delegate canonical math to rqm-core.
+    """
     assert "quaternion_to_circuit" not in rqm_braket.__all__

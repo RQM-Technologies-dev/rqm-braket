@@ -35,7 +35,8 @@ classifiers = [
   "Topic :: Software Development :: Libraries :: Python Modules"
 ]
 dependencies = [
-  "amazon-braket-sdk>=1.80.0"
+  "amazon-braket-sdk>=1.80.0",
+  "rqm-core>=0.1.0"
 ]
 
 [project.urls]
