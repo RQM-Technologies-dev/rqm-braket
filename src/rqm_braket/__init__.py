@@ -25,6 +25,11 @@ RQMGate
 compile_to_braket_circuit(program)
     Convenience function: translate a compiled program to a Braket circuit.
 
+to_backend_circuit(circuit, *, optimize=False)
+    Compiler-integrated translation: accepts an ``rqm_compiler.Circuit``,
+    compiles it (and optionally optimizes it), then returns a Braket circuit.
+    Requires ``rqm-compiler`` to be installed.
+
 run_local(program_or_circuit, shots=100)
     Execute on the local Braket state-vector simulator (no AWS credentials).
 
@@ -56,7 +61,7 @@ from rqm_core import Quaternion
 from rqm_braket.backend import BraketBackend
 from rqm_braket.execution import run_device, run_local
 from rqm_braket.results import BraketResult
-from rqm_braket.translator import BraketTranslator, RQMGate, compile_to_braket_circuit
+from rqm_braket.translator import BraketTranslator, RQMGate, compile_to_braket_circuit, to_backend_circuit
 from rqm_braket.translators import bloch_to_circuit, spinor_to_circuit
 
 # Backward-compat re-export (not in __all__)
@@ -67,6 +72,7 @@ __all__ = [
     "BraketTranslator",
     "RQMGate",
     "compile_to_braket_circuit",
+    "to_backend_circuit",
     "run_local",
     "run_device",
     "BraketResult",

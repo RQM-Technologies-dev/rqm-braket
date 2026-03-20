@@ -138,6 +138,35 @@ class BraketResult:
         """
         return self.probabilities.get(bitstring, 0.0)
 
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable dict representation of this result.
+
+        The returned format is designed for API compatibility, suitable for
+        returning from HTTP endpoints such as ``POST /run``.
+
+        Returns
+        -------
+        dict
+            A dict with the following keys:
+
+            * ``"counts"`` — measurement outcome counts as a plain ``dict``
+              mapping bitstring to integer count.
+            * ``"shots"`` — total number of shots as an integer.
+            * ``"backend"`` — the backend name (always ``"braket"``).
+            * ``"metadata"`` — task metadata as a plain dict (may be empty).
+
+        Examples
+        --------
+        >>> result.to_dict()
+        {'counts': {'00': 52, '11': 48}, 'shots': 100, 'backend': 'braket', 'metadata': {}}
+        """
+        return {
+            "counts": dict(self.counts),
+            "shots": self.shots,
+            "backend": "braket",
+            "metadata": self.metadata,
+        }
+
     # ------------------------------------------------------------------
     # Dunder helpers
     # ------------------------------------------------------------------
