@@ -26,6 +26,11 @@ from __future__ import annotations
 
 from typing import Any
 
+# NOTE:
+# Descriptor is the canonical backend-agnostic IR produced by rqm-compiler.
+# This format must remain stable and JSON-serializable.
+# Backends must consume descriptors but must not redefine them.
+
 #: A single gate descriptor in canonical rqm-compiler format.
 Descriptor = dict[str, Any]
 

@@ -10,6 +10,7 @@ Covers:
 - BraketResult.to_dict() (API-ready output)
 - BraketBackend.compile() / BraketBackend.run() methods
 - types module
+- _validate_descriptor() validation layer
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ from rqm_braket.results import BraketResult
 from rqm_braket.translator import (
     BraketTranslator,
     RQMGate,
+    _validate_descriptor,
     to_backend_circuit,
 )
 from rqm_braket.types import Descriptor, DescriptorList
@@ -238,9 +240,10 @@ def test_u1q_x_rotation_via_descriptor() -> None:
 
 def test_u1q_arbitrary_quaternion_via_descriptor() -> None:
     """u1q with an arbitrary normalised quaternion produces a valid circuit."""
-    # 60° rotation around Z: q = (cos 30°, 0, 0, sin 30°)
-    half = math.pi / 6  # 30°
-    w, z = math.cos(half), math.sin(half)
+    # 60° rotation around Z axis uses half-angle = 30° in the quaternion formula:
+    # q = (cos(θ/2), 0, 0, sin(θ/2)) with θ = 60°, so θ/2 = 30° = π/6
+    half_angle = math.pi / 6  # θ/2 = 30°
+    w, z = math.cos(half_angle), math.sin(half_angle)
     translator = BraketTranslator()
     circuit = translator.translate_descriptors([
         {"gate": "u1q", "targets": [0], "controls": [], "params": {
@@ -277,9 +280,10 @@ def test_u1q_matrix_is_unitary() -> None:
     """The SU(2) matrix produced for a u1q gate is unitary."""
     from rqm_core import Quaternion
 
-    # Test with a non-trivial quaternion: 90° rotation around Y
-    half = math.pi / 4  # 45°
-    q = Quaternion(math.cos(half), 0.0, math.sin(half), 0.0)
+    # Test with a non-trivial quaternion: 90° rotation around Y axis.
+    # Quaternion half-angle = θ/2 = 45° = π/4.
+    half_angle = math.pi / 4  # θ/2 for a 90° rotation
+    q = Quaternion(math.cos(half_angle), 0.0, math.sin(half_angle), 0.0)
     matrix = np.array(q.to_su2_matrix(), dtype=complex)
     product = matrix @ matrix.conj().T
     assert np.allclose(product, np.eye(2), atol=1e-10)
@@ -533,3 +537,185 @@ def test_backend_run_to_dict_integration() -> None:
     assert d["backend"] == "braket"
     assert d["shots"] == 100
     assert isinstance(d["counts"], dict)
+
+
+# ---------------------------------------------------------------------------
+# _validate_descriptor — validation layer
+# ---------------------------------------------------------------------------
+
+
+def test_validate_descriptor_valid_single_qubit() -> None:
+    """A well-formed single-qubit descriptor passes validation without error."""
+    _validate_descriptor({"gate": "h", "targets": [0], "controls": [], "params": {}})
+
+
+def test_validate_descriptor_valid_rotation() -> None:
+    """A well-formed rotation gate descriptor passes validation."""
+    _validate_descriptor({"gate": "rx", "targets": [0], "controls": [], "params": {"angle": 1.57}})
+
+
+def test_validate_descriptor_valid_two_qubit() -> None:
+    """A well-formed two-qubit gate descriptor passes validation."""
+    _validate_descriptor({"gate": "cx", "targets": [1], "controls": [0], "params": {}})
+
+
+def test_validate_descriptor_valid_u1q() -> None:
+    """A well-formed u1q descriptor with all quaternion params passes validation."""
+    _validate_descriptor({
+        "gate": "u1q", "targets": [0], "controls": [], "params": {
+            "w": 1.0, "x": 0.0, "y": 0.0, "z": 0.0,
+        },
+    })
+
+
+def test_validate_descriptor_valid_measure() -> None:
+    """A well-formed measure descriptor passes validation."""
+    _validate_descriptor({"gate": "measure", "targets": [0], "controls": [], "params": {}})
+
+
+def test_validate_descriptor_valid_barrier() -> None:
+    """A well-formed barrier descriptor passes validation."""
+    _validate_descriptor({"gate": "barrier", "targets": [0], "controls": [], "params": {}})
+
+
+def test_validate_descriptor_not_a_dict_raises_type_error() -> None:
+    """A non-dict descriptor raises TypeError."""
+    with pytest.raises(TypeError, match="dict"):
+        _validate_descriptor("not a dict")  # type: ignore[arg-type]
+
+    with pytest.raises(TypeError, match="dict"):
+        _validate_descriptor(["gate", "h"])  # type: ignore[arg-type]
+
+    with pytest.raises(TypeError, match="dict"):
+        _validate_descriptor(None)  # type: ignore[arg-type]
+
+
+def test_validate_descriptor_missing_gate_key_raises() -> None:
+    """Missing 'gate' key raises ValueError listing the missing key."""
+    with pytest.raises(ValueError, match="gate"):
+        _validate_descriptor({"targets": [0], "controls": [], "params": {}})
+
+
+def test_validate_descriptor_missing_targets_key_raises() -> None:
+    """Missing 'targets' key raises ValueError."""
+    with pytest.raises(ValueError, match="targets"):
+        _validate_descriptor({"gate": "h", "controls": [], "params": {}})
+
+
+def test_validate_descriptor_missing_controls_key_raises() -> None:
+    """Missing 'controls' key raises ValueError."""
+    with pytest.raises(ValueError, match="controls"):
+        _validate_descriptor({"gate": "h", "targets": [0], "params": {}})
+
+
+def test_validate_descriptor_missing_params_key_raises() -> None:
+    """Missing 'params' key raises ValueError."""
+    with pytest.raises(ValueError, match="params"):
+        _validate_descriptor({"gate": "h", "targets": [0], "controls": []})
+
+
+def test_validate_descriptor_multiple_missing_keys_raises() -> None:
+    """Multiple missing keys are reported together."""
+    with pytest.raises(ValueError, match="missing required keys"):
+        _validate_descriptor({})
+
+
+def test_validate_descriptor_wrong_gate_type_raises() -> None:
+    """A non-string 'gate' value raises TypeError."""
+    with pytest.raises(TypeError, match="gate.*str"):
+        _validate_descriptor({"gate": 42, "targets": [0], "controls": [], "params": {}})
+
+
+def test_validate_descriptor_wrong_targets_type_raises() -> None:
+    """A non-list 'targets' raises TypeError."""
+    with pytest.raises(TypeError, match="targets.*list"):
+        _validate_descriptor({"gate": "h", "targets": 0, "controls": [], "params": {}})
+
+
+def test_validate_descriptor_wrong_controls_type_raises() -> None:
+    """A non-list 'controls' raises TypeError."""
+    with pytest.raises(TypeError, match="controls.*list"):
+        _validate_descriptor({"gate": "h", "targets": [0], "controls": 0, "params": {}})
+
+
+def test_validate_descriptor_wrong_params_type_raises() -> None:
+    """A non-dict 'params' raises TypeError."""
+    with pytest.raises(TypeError, match="params.*dict"):
+        _validate_descriptor({"gate": "h", "targets": [0], "controls": [], "params": "bad"})
+
+
+def test_validate_descriptor_empty_gate_name_raises() -> None:
+    """An empty 'gate' string raises ValueError."""
+    with pytest.raises(ValueError, match="empty"):
+        _validate_descriptor({"gate": "", "targets": [0], "controls": [], "params": {}})
+
+
+def test_validate_descriptor_unknown_gate_raises() -> None:
+    """An unrecognised gate name raises ValueError."""
+    with pytest.raises(ValueError, match="Unknown gate"):
+        _validate_descriptor({"gate": "FOOBAR", "targets": [0], "controls": [], "params": {}})
+
+
+def test_validate_descriptor_rotation_missing_angle_raises() -> None:
+    """A rotation gate descriptor without 'angle' in params raises ValueError."""
+    with pytest.raises(ValueError, match="angle"):
+        _validate_descriptor({"gate": "rx", "targets": [0], "controls": [], "params": {}})
+
+
+def test_validate_descriptor_rotation_wrong_angle_type_raises() -> None:
+    """A rotation gate with a non-numeric 'angle' raises TypeError."""
+    with pytest.raises(TypeError, match="angle.*number"):
+        _validate_descriptor({
+            "gate": "rx", "targets": [0], "controls": [], "params": {"angle": "fast"},
+        })
+
+
+def test_validate_descriptor_u1q_missing_quaternion_key_raises() -> None:
+    """u1q descriptor missing any of w/x/y/z raises ValueError."""
+    for missing_key in ("w", "x", "y", "z"):
+        params = {"w": 1.0, "x": 0.0, "y": 0.0, "z": 0.0}
+        del params[missing_key]
+        with pytest.raises(ValueError, match=missing_key):
+            _validate_descriptor({"gate": "u1q", "targets": [0], "controls": [], "params": params})
+
+
+def test_validate_descriptor_u1q_wrong_param_type_raises() -> None:
+    """u1q descriptor with a non-numeric quaternion component raises TypeError."""
+    with pytest.raises(TypeError, match="number"):
+        _validate_descriptor({
+            "gate": "u1q", "targets": [0], "controls": [], "params": {
+                "w": "one", "x": 0.0, "y": 0.0, "z": 0.0,
+            },
+        })
+
+
+def test_validate_descriptor_called_by_apply_descriptor() -> None:
+    """_apply_descriptor invokes validation; invalid descriptors raise before translation."""
+    translator = BraketTranslator()
+    with pytest.raises(ValueError, match="missing required keys"):
+        translator.translate_descriptors([{"gate": "h"}])  # missing targets/controls/params
+
+
+def test_validate_descriptor_called_by_translate_descriptors_type_error() -> None:
+    """translate_descriptors propagates TypeError from _validate_descriptor."""
+    translator = BraketTranslator()
+    with pytest.raises(TypeError, match="dict"):
+        translator.translate_descriptors(["not a descriptor"])  # type: ignore[list-item]
+
+
+def test_validate_descriptor_case_insensitive_gate_name() -> None:
+    """Gate name validation is case-insensitive (upper-cases before checking)."""
+    # lowercase 'h' should be treated as valid 'H'
+    _validate_descriptor({"gate": "h", "targets": [0], "controls": [], "params": {}})
+    _validate_descriptor({"gate": "RX", "targets": [0], "controls": [], "params": {"angle": 1.0}})
+    _validate_descriptor({"gate": "Cnot", "targets": [1], "controls": [0], "params": {}})
+
+
+def test_validate_descriptor_integer_angle_accepted() -> None:
+    """An integer 'angle' value is accepted (numeric types are valid)."""
+    _validate_descriptor({"gate": "rx", "targets": [0], "controls": [], "params": {"angle": 1}})
+
+
+def test_validate_descriptor_tuple_targets_accepted() -> None:
+    """Tuple 'targets' and 'controls' are accepted (list-like)."""
+    _validate_descriptor({"gate": "h", "targets": (0,), "controls": (), "params": {}})

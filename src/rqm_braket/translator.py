@@ -243,27 +243,33 @@ class BraketTranslator:
     ) -> None:
         """Apply a single compiled instruction to *circuit* in place.
 
-        Handles both the legacy :class:`RQMGate` / attribute-based format and
-        the canonical descriptor dict format from ``rqm-compiler``:
+        Dispatches based on the type of *instruction*:
 
-        * Attribute format: ``instruction.gate``, ``instruction.target``,
-          ``instruction.control``, ``instruction.angle``.
-        * Descriptor format: ``instruction["gate"]``, ``instruction["targets"]``,
-          ``instruction["controls"]``, ``instruction["params"]``.
+        * **Descriptor dict** (produced by ``rqm-compiler``'s
+          ``Circuit.to_descriptors()``): routed to :meth:`_apply_descriptor`,
+          which also performs validation via :func:`_validate_descriptor`.
+          Keys used: ``"gate"``, ``"targets"``, ``"controls"``, ``"params"``.
+        * **Attribute-based objects** (:class:`RQMGate` or any object with
+          ``gate``, ``target``, ``control``, ``angle`` attributes): handled
+          directly in this method.
 
         Parameters
         ----------
         circuit:
             The Braket circuit being constructed.
         instruction:
-            A :class:`CompiledInstruction`-compatible object **or** a descriptor
-            dict produced by ``rqm-compiler``'s ``Circuit.to_descriptors()``.
+            A :class:`CompiledInstruction`-compatible object **or** a
+            descriptor dict produced by ``rqm-compiler``'s
+            ``Circuit.to_descriptors()``.
 
         Raises
         ------
         ValueError
             If the gate name is not recognised or a required attribute is
             absent or ``None``.
+        TypeError
+            If a descriptor dict contains fields of the wrong type (raised
+            by :func:`_validate_descriptor` for the dict path).
         """
         # Detect descriptor dict format (targets / controls / params).
         # Objects (e.g. RQMGate) use attribute access (gate, target, control, angle).
@@ -344,8 +350,11 @@ class BraketTranslator:
         Raises
         ------
         ValueError
-            If the gate name is not recognised or required fields are missing.
+            If the descriptor is malformed, the gate name is not recognised,
+            or required fields are missing.
         """
+        _validate_descriptor(op)
+
         gate_name = str(op.get("gate", "")).upper()
         targets: list[int] = [int(q) for q in op.get("targets", [])]
         controls: list[int] = [int(q) for q in op.get("controls", [])]
@@ -551,6 +560,117 @@ def to_backend_circuit(circuit: Any, *, optimize: bool = False) -> Circuit:
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
+
+
+def _validate_descriptor(op: Descriptor) -> None:
+    """Validate a canonical gate descriptor dict before translation.
+
+    Checks that the descriptor has the required keys, that each field has the
+    correct type, and that the gate name is known.  This guard is called by
+    :meth:`BraketTranslator._apply_descriptor` so that all descriptor-path
+    inputs are validated before any circuit operation is attempted.
+
+    This is particularly important for API-facing code (``POST /run``,
+    ``POST /compile``) where descriptors arrive as user-supplied JSON and may
+    be malformed or carry unexpected values.
+
+    Parameters
+    ----------
+    op:
+        A descriptor dict to validate.
+
+    Raises
+    ------
+    TypeError
+        If *op* is not a ``dict`` or if any field has the wrong type.
+    ValueError
+        If a required key is missing, the gate name is empty or unknown, or
+        parameter shapes are incorrect for the given gate.
+    """
+    if not isinstance(op, dict):
+        raise TypeError(
+            f"Descriptor must be a dict, got {type(op).__name__!r}."
+        )
+
+    # --- required keys -------------------------------------------------------
+    _REQUIRED_KEYS = {"gate", "targets", "controls", "params"}
+    missing = _REQUIRED_KEYS - op.keys()
+    if missing:
+        raise ValueError(
+            f"Descriptor is missing required keys: {sorted(missing)}. "
+            f"Expected keys: {sorted(_REQUIRED_KEYS)}."
+        )
+
+    # --- field types ---------------------------------------------------------
+    gate_raw = op["gate"]
+    if not isinstance(gate_raw, str):
+        raise TypeError(
+            f"Descriptor 'gate' must be a str, got {type(gate_raw).__name__!r}."
+        )
+
+    targets = op["targets"]
+    if not isinstance(targets, (list, tuple)):
+        raise TypeError(
+            f"Descriptor 'targets' must be a list, got {type(targets).__name__!r}."
+        )
+
+    controls = op["controls"]
+    if not isinstance(controls, (list, tuple)):
+        raise TypeError(
+            f"Descriptor 'controls' must be a list, got {type(controls).__name__!r}."
+        )
+
+    params = op["params"]
+    if not isinstance(params, dict):
+        raise TypeError(
+            f"Descriptor 'params' must be a dict, got {type(params).__name__!r}."
+        )
+
+    # --- gate name -----------------------------------------------------------
+    gate_name = gate_raw.upper()
+    if not gate_name:
+        raise ValueError("Descriptor 'gate' must not be empty.")
+
+    _ALL_KNOWN_GATES = (
+        set(SINGLE_QUBIT_GATES)
+        | set(ROTATION_GATES)
+        | set(TWO_QUBIT_GATES)
+        | NOOP_GATES
+        | {"MEASURE", "U1Q"}
+    )
+    if gate_name not in _ALL_KNOWN_GATES:
+        raise ValueError(
+            f"Unknown gate '{gate_name}' in descriptor. "
+            f"Known gates: {sorted(_ALL_KNOWN_GATES)}."
+        )
+
+    # --- parameter shapes ----------------------------------------------------
+    if gate_name in ROTATION_GATES:
+        if "angle" not in params:
+            raise ValueError(
+                f"Descriptor for rotation gate '{gate_name}' requires "
+                f"'angle' in params."
+            )
+        angle_val = params["angle"]
+        if not isinstance(angle_val, (int, float)):
+            raise TypeError(
+                f"Descriptor param 'angle' for gate '{gate_name}' must be a "
+                f"number, got {type(angle_val).__name__!r}."
+            )
+
+    if gate_name == "U1Q":
+        for key in ("w", "x", "y", "z"):
+            if key not in params:
+                raise ValueError(
+                    f"Descriptor for 'U1Q' requires '{key}' in params. "
+                    f"Expected: {{'w': float, 'x': float, 'y': float, 'z': float}}."
+                )
+            val = params[key]
+            if not isinstance(val, (int, float)):
+                raise TypeError(
+                    f"Descriptor param '{key}' for gate 'U1Q' must be a "
+                    f"number, got {type(val).__name__!r}."
+                )
 
 
 def _get_instructions(program: Any) -> Any:
