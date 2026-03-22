@@ -372,10 +372,23 @@ RQM Studio communicates with `rqm-api`, which calls into `rqm-braket`.
 The recommended call pattern is:
 
 1. **Design circuit** in RQM Studio UI → `rqm-compiler` compiles to descriptors.
-2. **Submit job** via `rqm-api` → calls `run_descriptors(descriptors, backend="device", ...)`.
-3. **Poll status** via `rqm-api` → calls `get_task_status(task_arn)`.
-4. **Retrieve result** via `rqm-api` → calls `get_task_result(task_arn)`.
-5. **Visualize** result in RQM Studio → use `result.to_dict(include_probabilities=True)`.
+2. **Choose device** via `GET /v1/devices` → calls `list_devices()`.
+3. **Submit job** via `POST /v1/run/async` → calls `run_device_async(...)`, returns `task_arn`.
+4. **Poll status** via `GET /v1/tasks/<task_arn>/status` → calls `get_task_status(task_arn)`.
+5. **Retrieve result** via `GET /v1/tasks/<task_arn>/result` → calls `get_task_result(task_arn)`.
+6. **Visualize** result in RQM Studio UI.
+
+For synchronous (blocking) local or device runs use `POST /v1/run`.
+
+### Integrating the Blueprint
+
+```python
+from flask import Flask
+from rqm_braket.api import api_blueprint
+
+app = Flask(__name__)
+app.register_blueprint(api_blueprint, url_prefix="/v1")
+```
 
 ### Device selection
 
@@ -458,6 +471,40 @@ examples/compiled_program_demo.py
 ---
 
 ## Public API
+
+### REST API Blueprint (rqm-api integration)
+
+```python
+api_blueprint           # Flask Blueprint — mount in rqm-api Flask application
+```
+
+Mount in your `rqm-api` application:
+
+```python
+from flask import Flask
+from rqm_braket.api import api_blueprint
+
+app = Flask(__name__)
+app.register_blueprint(api_blueprint, url_prefix="/v1")
+```
+
+Endpoints exposed:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/v1/run` | Execute circuit synchronously (`local` or `device` backend) |
+| `POST` | `/v1/run/async` | Submit circuit to AWS Braket device; returns `task_arn` |
+| `GET`  | `/v1/tasks/<task_arn>/status` | Poll task state (`QUEUED`, `RUNNING`, `COMPLETED`, …) |
+| `GET`  | `/v1/tasks/<task_arn>/result` | Retrieve result of completed task |
+| `GET`  | `/v1/devices` | List available AWS Braket devices |
+
+Install the optional `[api]` extra to pull in Flask:
+
+```bash
+pip install rqm-braket[api]
+```
+
+---
 
 ### Core backend API
 
