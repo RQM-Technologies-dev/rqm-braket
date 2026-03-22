@@ -164,6 +164,7 @@ Follow these guidelines:
 | `translators.py` | Backward-compat shim; legacy dict-based `to_braket_circuit` |
 | `execution.py` | `run_local`, `run_device`, `run_device_async`, `get_task_status`, `get_task_result`, `list_devices`, `run_descriptors`, `BraketDeviceError` |
 | `devices.py` | Backward-compat shim re-exporting from `execution.py` |
+| `api.py` | Flask `Blueprint` (`api_blueprint`) exposing `/run`, `/run/async`, `/tasks/<arn>/status`, `/tasks/<arn>/result`, `/devices` endpoints |
 | `backend.py` | `BraketBackend` unified backend object |
 | `circuits.py` | Lightweight demo circuit builders (Bell, GHZ, etc.) |
 | `results.py` | `BraketResult` wrapper around Braket task results |

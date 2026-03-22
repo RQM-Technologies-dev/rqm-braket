@@ -17,6 +17,11 @@ BraketBackend
     High-level backend object: compile, run locally, run on AWS device,
     submit asynchronous jobs, run from descriptors.
 
+api_blueprint
+    Flask ``Blueprint`` exposing REST API endpoints for circuit execution
+    and device discovery.  Mount in your ``rqm-api`` Flask application with
+    ``app.register_blueprint(api_blueprint, url_prefix="/v1")``.
+
 BraketTranslator
     Translates compiled programs / gate sequences into Braket ``Circuit``.
 
@@ -77,6 +82,7 @@ bloch_to_circuit(theta, phi, target=0)
 
 from rqm_core import Quaternion
 
+from rqm_braket.api import api_blueprint
 from rqm_braket.backend import BraketBackend
 from rqm_braket.execution import (
     BraketDeviceError,
@@ -96,6 +102,7 @@ from rqm_braket.translators import bloch_to_circuit, spinor_to_circuit
 from rqm_braket.translators import to_braket_circuit  # noqa: F401
 
 __all__ = [
+    "api_blueprint",
     "BraketBackend",
     "BraketTranslator",
     "RQMGate",
