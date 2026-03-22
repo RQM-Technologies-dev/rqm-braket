@@ -12,14 +12,17 @@ single object representing the AWS Braket backend.  It wraps
 
 from __future__ import annotations
 
-from typing import Any, Tuple
+from typing import Any, Literal, Tuple
 
 from braket.circuits import Circuit
 
 from rqm_braket.execution import run_device as _run_device
+from rqm_braket.execution import run_device_async as _run_device_async
+from rqm_braket.execution import run_descriptors as _run_descriptors
 from rqm_braket.execution import run_local as _run_local
 from rqm_braket.results import BraketResult
 from rqm_braket.translator import BraketTranslator, to_backend_circuit
+from rqm_braket.types import DescriptorList
 
 
 class BraketBackend:
@@ -28,7 +31,9 @@ class BraketBackend:
     Provides a unified interface for:
 
     * translating compiled programs to Braket circuits, and
-    * executing those circuits on the local simulator or AWS devices.
+    * executing those circuits on the local simulator or AWS devices,
+    * submitting asynchronous jobs and polling their status, and
+    * running descriptor-first workflows from the API layer.
 
     Examples
     --------
@@ -94,7 +99,7 @@ class BraketBackend:
         shots: int = 100,
         **kwargs: Any,
     ) -> BraketResult:
-        """Execute *program_or_circuit* on a remote AWS Braket device.
+        """Execute *program_or_circuit* on a remote AWS Braket device (synchronous).
 
         Requires valid AWS credentials and a configured Braket-enabled region.
 
@@ -117,6 +122,96 @@ class BraketBackend:
         BraketResult
         """
         return _run_device(program_or_circuit, device_arn, s3_folder, shots=shots, **kwargs)
+
+    def run_device_async(
+        self,
+        program_or_circuit: Circuit | Any,
+        device_arn: str,
+        s3_folder: Tuple[str, str],
+        shots: int = 100,
+        **kwargs: Any,
+    ) -> str:
+        """Submit *program_or_circuit* to a remote device and return the task ARN.
+
+        Does **not** block until the task completes.  Use
+        :func:`~rqm_braket.execution.get_task_status` and
+        :func:`~rqm_braket.execution.get_task_result` to poll and retrieve
+        the result.
+
+        Parameters
+        ----------
+        program_or_circuit:
+            A Braket ``Circuit``, a ``CompiledProgram``-compatible object, or
+            a sequence of ``CompiledInstruction``-compatible objects.
+        device_arn:
+            ARN of the target device.
+        s3_folder:
+            A ``(bucket, key_prefix)`` tuple for Braket result storage.
+        shots:
+            Number of measurement shots (default 100).
+        **kwargs:
+            Forwarded to ``AwsDevice.run()``.
+
+        Returns
+        -------
+        str
+            Task ARN identifying the submitted job.
+        """
+        return _run_device_async(program_or_circuit, device_arn, s3_folder, shots=shots, **kwargs)
+
+    def run_descriptors(
+        self,
+        descriptors: DescriptorList,
+        shots: int = 100,
+        backend: Literal["local", "device"] = "local",
+        device_arn: str | None = None,
+        s3_folder: Tuple[str, str] | None = None,
+        **kwargs: Any,
+    ) -> BraketResult:
+        """Translate canonical descriptors and execute the resulting circuit.
+
+        Convenience wrapper around :func:`~rqm_braket.execution.run_descriptors`
+        for use from the object-oriented API.
+
+        Parameters
+        ----------
+        descriptors:
+            Ordered list of canonical gate descriptors (output of
+            ``rqm_compiler.Circuit.to_descriptors()``).
+        shots:
+            Number of measurement shots (default 100).
+        backend:
+            ``"local"`` (default) or ``"device"``.
+        device_arn:
+            Required when *backend* is ``"device"``.
+        s3_folder:
+            Required when *backend* is ``"device"``.
+        **kwargs:
+            Forwarded to the underlying execution helper.
+
+        Returns
+        -------
+        BraketResult
+
+        Examples
+        --------
+        >>> from rqm_braket.backend import BraketBackend
+        >>> backend = BraketBackend()
+        >>> descriptors = [
+        ...     {"gate": "h", "targets": [0], "controls": [], "params": {}},
+        ...     {"gate": "cx", "targets": [1], "controls": [0], "params": {}},
+        ... ]
+        >>> result = backend.run_descriptors(descriptors, shots=200)
+        >>> print(result.counts)
+        """
+        return _run_descriptors(
+            descriptors,
+            shots=shots,
+            backend=backend,
+            device_arn=device_arn,
+            s3_folder=s3_folder,
+            **kwargs,
+        )
 
     # ------------------------------------------------------------------
     # Compiler-integrated API (rqm-compiler required)

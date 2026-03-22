@@ -104,7 +104,13 @@ BraketResult
 Utilities that run circuits on:
 
 - LocalSimulator (`run_local`)
-- AWS Braket devices (`run_device`)
+- AWS Braket devices — synchronous (`run_device`) and asynchronous (`run_device_async`)
+- Task status polling (`get_task_status`, `get_task_result`)
+- Device discovery (`list_devices`)
+- Descriptor-first execution (`run_descriptors`)
+
+Async task functions must **not embed math logic**.  They only wrap Braket
+SDK calls and convert exceptions into `BraketDeviceError`.
 
 ---
 
@@ -156,11 +162,12 @@ Follow these guidelines:
 |---|---|
 | `translator.py` | `BraketTranslator`, `RQMGate`, `compile_to_braket_circuit` |
 | `translators.py` | Backward-compat shim; legacy dict-based `to_braket_circuit` |
-| `execution.py` | `run_local` and `run_device` (accept Circuit or compiled program) |
+| `execution.py` | `run_local`, `run_device`, `run_device_async`, `get_task_status`, `get_task_result`, `list_devices`, `run_descriptors`, `BraketDeviceError` |
 | `devices.py` | Backward-compat shim re-exporting from `execution.py` |
 | `backend.py` | `BraketBackend` unified backend object |
 | `circuits.py` | Lightweight demo circuit builders (Bell, GHZ, etc.) |
 | `results.py` | `BraketResult` wrapper around Braket task results |
+| `types.py` | `Descriptor` and `DescriptorList` type aliases |
 | `__init__.py` | Re-exports the public API only |
 
 ---

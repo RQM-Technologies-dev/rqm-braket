@@ -138,16 +138,34 @@ class BraketResult:
         """
         return self.probabilities.get(bitstring, 0.0)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(
+        self,
+        *,
+        include_probabilities: bool = False,
+        include_task_id: bool = False,
+        include_status: bool = False,
+    ) -> dict[str, Any]:
         """Return a JSON-serializable dict representation of this result.
 
         The returned format is designed for API compatibility, suitable for
         returning from HTTP endpoints such as ``POST /run``.
 
+        Parameters
+        ----------
+        include_probabilities:
+            When ``True``, include a ``"probabilities"`` key with the
+            empirical outcome probabilities.
+        include_task_id:
+            When ``True``, include a ``"task_id"`` key with the task ARN
+            extracted from the task metadata (``None`` if unavailable).
+        include_status:
+            When ``True``, include a ``"status"`` key with the task status
+            string from metadata (``None`` if unavailable).
+
         Returns
         -------
         dict
-            A dict with the following keys:
+            A dict with the following keys (always present):
 
             * ``"counts"`` — measurement outcome counts as a plain ``dict``
               mapping bitstring to integer count.
@@ -155,17 +173,35 @@ class BraketResult:
             * ``"backend"`` — the backend name (always ``"braket"``).
             * ``"metadata"`` — task metadata as a plain dict (may be empty).
 
+            Optional keys (present only when the corresponding flag is
+            ``True``):
+
+            * ``"probabilities"`` — empirical probabilities as a ``dict``
+              mapping bitstring to ``float`` in [0, 1].
+            * ``"task_id"`` — task ARN string or ``None``.
+            * ``"status"`` — task status string or ``None``.
+
         Examples
         --------
         >>> result.to_dict()
         {'counts': {'00': 52, '11': 48}, 'shots': 100, 'backend': 'braket', 'metadata': {}}
+        >>> result.to_dict(include_probabilities=True, include_task_id=True)
+        {'counts': {...}, 'shots': 100, 'backend': 'braket', 'metadata': {},
+         'probabilities': {'00': 0.52, '11': 0.48}, 'task_id': None}
         """
-        return {
+        result: dict[str, Any] = {
             "counts": dict(self.counts),
             "shots": self.shots,
             "backend": "braket",
             "metadata": self.metadata,
         }
+        if include_probabilities:
+            result["probabilities"] = self.probabilities
+        if include_task_id:
+            result["task_id"] = self.metadata.get("id") or self.metadata.get("taskId")
+        if include_status:
+            result["status"] = self.metadata.get("status")
+        return result
 
     # ------------------------------------------------------------------
     # Dunder helpers

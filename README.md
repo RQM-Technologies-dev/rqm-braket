@@ -8,6 +8,9 @@ Amazon Braket backend for the **Resonant Quantum Mechanics (RQM)** ecosystem.
 - **AWS Braket quantum devices**
 
 This package is a **backend adapter**, not a compiler and not a math engine.
+It also serves as the **execution engine** for **RQM Studio** (via `rqm-api`),
+supporting synchronous and asynchronous job submission, device discovery, and
+descriptor-first workflows.
 
 ---
 
@@ -25,6 +28,10 @@ rqm-core      rqm-compiler     rqm-notebooks
         ----------------------
         |                    |
     rqm-qiskit          rqm-braket
+                              |
+                          rqm-api
+                              |
+                         RQM Studio
 ```
 
 ### Layer responsibilities
@@ -35,13 +42,14 @@ rqm-core      rqm-compiler     rqm-notebooks
 | `rqm-compiler`   | Compile RQM objects into backend-agnostic instructions |
 | `rqm-braket`     | Execute compiled programs on Amazon Braket |
 | `rqm-qiskit`     | Execute compiled programs on Qiskit |
+| `rqm-api`        | REST API layer exposing backends to RQM Studio |
 | `rqm-notebooks`  | Examples, demos, tutorials |
 
 ---
 
 ## What This Package Does
 
-`rqm-braket` provides three core capabilities:
+`rqm-braket` provides five core capabilities:
 
 ---
 
@@ -62,15 +70,15 @@ compile_to_braket_circuit(...)
 
 ---
 
-### 2. Execution
+### 2. Synchronous Execution
 
 Run circuits on:
 
 - Local simulator (offline-safe)
-- AWS Braket devices
+- AWS Braket devices (synchronous — blocks until complete)
 
 ```
-Circuit → execution → result
+Circuit → execution → BraketResult
 ```
 
 Handled by:
@@ -83,7 +91,62 @@ BraketBackend
 
 ---
 
-### 3. Result Wrapping
+### 3. Asynchronous Execution
+
+Submit jobs without blocking and poll for results later:
+
+```
+Circuit → submit → task_arn → poll status → retrieve result
+```
+
+Handled by:
+
+```
+run_device_async(...)   → task ARN
+get_task_status(arn)    → "QUEUED" / "RUNNING" / "COMPLETED" / ...
+get_task_result(arn)    → BraketResult
+```
+
+---
+
+### 4. Device Discovery
+
+List available AWS Braket devices:
+
+```python
+from rqm_braket import list_devices
+
+simulators = list_devices(device_types=["SIMULATOR"])
+qpu_devices = list_devices(device_types=["QPU"])
+all_devices = list_devices()
+```
+
+Returns JSON-serializable dicts with `deviceArn`, `deviceName`,
+`deviceType`, `status`, and `providerName`.
+
+---
+
+### 5. Descriptor-first Execution
+
+Execute directly from canonical descriptors (JSON output of
+`rqm_compiler.Circuit.to_descriptors()`):
+
+```python
+from rqm_braket import run_descriptors
+
+descriptors = [
+    {"gate": "h", "targets": [0], "controls": [], "params": {}},
+    {"gate": "cx", "targets": [1], "controls": [0], "params": {}},
+]
+result = run_descriptors(descriptors, shots=200)
+print(result.counts)
+```
+
+This is the primary API entry point for `rqm-api` / RQM Studio.
+
+---
+
+### 6. Result Wrapping
 
 Normalize Braket outputs into a simple interface:
 
@@ -92,11 +155,15 @@ result.counts
 result.probabilities
 result.shots
 result.most_likely_bitstring()
+result.to_dict()                                    # base fields
+result.to_dict(include_probabilities=True)          # + probabilities
+result.to_dict(include_task_id=True)                # + task ARN
+result.to_dict(include_status=True)                 # + task status
 ```
 
 ---
 
-### 4. Convenience Bridges (rqm-core delegation)
+### 7. Convenience Bridges (rqm-core delegation)
 
 `rqm-braket` exposes thin bridge functions for users who want to prepare
 quantum states without going through the compiler first.
@@ -203,7 +270,7 @@ print(result.counts)
 
 ## Usage Modes
 
-`rqm-braket` supports two entry points depending on your audience and use case.
+`rqm-braket` supports multiple entry points depending on your audience and use case.
 
 ### Mode 1 — Compiler-first (recommended for production)
 
@@ -224,7 +291,52 @@ print(result.counts)
 
 Intended for: researchers, engineers, production workflows.
 
-### Mode 2 — Bridge functions (convenient for exploration)
+### Mode 2 — Descriptor-first (recommended for API layer)
+
+```
+rqm-api → descriptors (JSON) → run_descriptors(...)
+```
+
+```python
+from rqm_braket import run_descriptors
+
+descriptors = [
+    {"gate": "h", "targets": [0], "controls": [], "params": {}},
+    {"gate": "cx", "targets": [1], "controls": [0], "params": {}},
+]
+result = run_descriptors(descriptors, shots=200)
+print(result.to_dict(include_probabilities=True))
+```
+
+Intended for: the `rqm-api` layer and RQM Studio integration.
+
+### Mode 3 — Asynchronous device execution
+
+```
+run_device_async(...) → task_arn → get_task_status(arn) → get_task_result(arn)
+```
+
+```python
+from rqm_braket import run_device_async, get_task_status, get_task_result
+
+task_arn = run_device_async(
+    program,
+    device_arn="arn:aws:braket:::device/quantum-simulator/amazon/sv1",
+    s3_folder=("my-bucket", "results"),
+    shots=100,
+)
+
+status = get_task_status(task_arn)
+print(status)  # "QUEUED", "RUNNING", "COMPLETED", ...
+
+if status == "COMPLETED":
+    result = get_task_result(task_arn)
+    print(result.counts)
+```
+
+Intended for: long-running QPU jobs where blocking is undesirable.
+
+### Mode 4 — Bridge functions (convenient for exploration)
 
 ```
 spinor_to_circuit(...)
@@ -251,6 +363,59 @@ Intended for: students, tutorials, quick experiments.
 
 > All quantum mathematics (Bloch conversion, spinor normalization) is
 > delegated to `rqm-core`.  `rqm-braket` only maps the results to gates.
+
+---
+
+## Running from RQM Studio
+
+RQM Studio communicates with `rqm-api`, which calls into `rqm-braket`.
+The recommended call pattern is:
+
+1. **Design circuit** in RQM Studio UI → `rqm-compiler` compiles to descriptors.
+2. **Submit job** via `rqm-api` → calls `run_descriptors(descriptors, backend="device", ...)`.
+3. **Poll status** via `rqm-api` → calls `get_task_status(task_arn)`.
+4. **Retrieve result** via `rqm-api` → calls `get_task_result(task_arn)`.
+5. **Visualize** result in RQM Studio → use `result.to_dict(include_probabilities=True)`.
+
+### Device selection
+
+```python
+from rqm_braket import list_devices
+
+# List all simulators
+simulators = list_devices(device_types=["SIMULATOR"])
+
+# List all QPUs
+qpus = list_devices(device_types=["QPU"])
+
+# RQM Studio can display these to the user for device selection
+```
+
+### AWS credentials
+
+`rqm-braket` uses the standard AWS credential chain.  Configure via:
+
+- `aws configure` (CLI)
+- Environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION`)
+- IAM roles (recommended for production)
+
+**Never store AWS credentials in code.**
+
+### S3 result storage
+
+Device execution requires an S3 bucket for Braket to store task results.
+For large circuits or production deployments, use a dedicated S3 bucket and
+prefix managed by `rqm-api` to consolidate result storage across jobs.
+
+```python
+result = run_descriptors(
+    descriptors,
+    backend="device",
+    device_arn="arn:aws:braket:us-east-1::device/qpu/ionq/Harmony",
+    s3_folder=("your-braket-bucket", "rqm-results"),
+    shots=1000,
+)
+```
 
 ---
 
@@ -297,13 +462,39 @@ examples/compiled_program_demo.py
 ### Core backend API
 
 ```python
-BraketBackend
-BraketTranslator
-RQMGate
-compile_to_braket_circuit
-run_local
-run_device
-BraketResult
+BraketBackend           # unified backend object
+BraketTranslator        # compile programs → Braket Circuit
+RQMGate                 # typed gate descriptor
+compile_to_braket_circuit  # convenience translation
+run_local               # execute on local simulator (offline-safe)
+run_device              # execute on AWS Braket device (synchronous)
+BraketResult            # result wrapper
+```
+
+### Async & task management
+
+```python
+run_device_async        # submit job → task ARN (non-blocking)
+get_task_status         # query task state ("QUEUED" / "RUNNING" / ...)
+get_task_result         # retrieve BraketResult for completed task
+```
+
+### Device discovery
+
+```python
+list_devices            # list available AWS Braket devices
+```
+
+### Descriptor-first execution
+
+```python
+run_descriptors         # translate descriptors + execute (API-ready)
+```
+
+### Error handling
+
+```python
+BraketDeviceError       # raised for device/task failures (RuntimeError subclass)
 ```
 
 ### Convenience bridges (rqm-core delegation)
@@ -328,7 +519,7 @@ No AWS credentials required.
 
 ---
 
-### AWS Device
+### AWS Device (synchronous)
 
 ```python
 result = run_device(
@@ -340,6 +531,33 @@ result = run_device(
 ```
 
 Requires standard AWS + Braket configuration.
+
+---
+
+### AWS Device (asynchronous)
+
+```python
+task_arn = run_device_async(
+    program,
+    device_arn="arn:aws:braket:...",
+    s3_folder=("bucket", "prefix"),
+    shots=100,
+)
+status = get_task_status(task_arn)     # "QUEUED", "RUNNING", "COMPLETED", ...
+result = get_task_result(task_arn)     # BraketResult (blocks until done)
+```
+
+---
+
+### Descriptor-first (API layer)
+
+```python
+result = run_descriptors(
+    descriptors,
+    shots=100,
+    backend="local",   # or "device"
+)
+```
 
 ---
 
@@ -424,6 +642,11 @@ This release introduces:
 * compiler-based architecture
 * `BraketBackend` abstraction
 * clean translation/execution separation
+* async execution (`run_device_async`, `get_task_status`, `get_task_result`)
+* device discovery (`list_devices`)
+* descriptor-first execution (`run_descriptors`)
+* extended result serialization (`BraketResult.to_dict` optional extras)
+* `BraketDeviceError` for friendly error handling
 * backward-compatibility shims (deprecated)
 
 ---
@@ -432,11 +655,13 @@ This release introduces:
 
 Future improvements may include:
 
-* parameter binding support
+* parameter binding support via Braket `FreeParameter`
+  (TODO: propose adding parametric circuit support to `rqm-core` or `rqm-compiler`)
 * batched execution
 * hybrid Braket workflows
 * richer result analysis
 * multi-qubit optimization paths
+* S3 result storage managed by `rqm-api`
 
 ---
 

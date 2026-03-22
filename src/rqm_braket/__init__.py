@@ -14,7 +14,8 @@ mathematics (quaternion, spinor, Bloch, SU(2)) belongs in ``rqm-core``.
 Public API
 ----------
 BraketBackend
-    High-level backend object: compile, run locally, run on AWS device.
+    High-level backend object: compile, run locally, run on AWS device,
+    submit asynchronous jobs, run from descriptors.
 
 BraketTranslator
     Translates compiled programs / gate sequences into Braket ``Circuit``.
@@ -34,10 +35,28 @@ run_local(program_or_circuit, shots=100)
     Execute on the local Braket state-vector simulator (no AWS credentials).
 
 run_device(program_or_circuit, device_arn, s3_folder, shots=100, **kwargs)
-    Execute on a remote AWS Braket device.
+    Execute on a remote AWS Braket device (synchronous).
+
+run_device_async(program_or_circuit, device_arn, s3_folder, shots=100, **kwargs)
+    Submit to a remote AWS Braket device and return the task ARN (asynchronous).
+
+get_task_status(task_arn)
+    Return the current status of an AWS Braket task.
+
+get_task_result(task_arn)
+    Retrieve the result of a completed AWS Braket task.
+
+list_devices(device_types=None)
+    List available AWS Braket devices with optional type filter.
+
+run_descriptors(descriptors, shots=100, backend="local", ...)
+    Translate canonical descriptors and execute the resulting circuit.
 
 BraketResult
     Friendly wrapper around Braket task results.
+
+BraketDeviceError
+    Exception raised when a Braket device or task operation fails.
 
 rqm-core re-exports
 -------------------
@@ -59,7 +78,16 @@ bloch_to_circuit(theta, phi, target=0)
 from rqm_core import Quaternion
 
 from rqm_braket.backend import BraketBackend
-from rqm_braket.execution import run_device, run_local
+from rqm_braket.execution import (
+    BraketDeviceError,
+    get_task_result,
+    get_task_status,
+    list_devices,
+    run_descriptors,
+    run_device,
+    run_device_async,
+    run_local,
+)
 from rqm_braket.results import BraketResult
 from rqm_braket.translator import BraketTranslator, RQMGate, compile_to_braket_circuit, to_backend_circuit
 from rqm_braket.translators import bloch_to_circuit, spinor_to_circuit
@@ -75,7 +103,13 @@ __all__ = [
     "to_backend_circuit",
     "run_local",
     "run_device",
+    "run_device_async",
+    "get_task_status",
+    "get_task_result",
+    "list_devices",
+    "run_descriptors",
     "BraketResult",
+    "BraketDeviceError",
     # rqm-core re-exports
     "Quaternion",
     # bridge functions
