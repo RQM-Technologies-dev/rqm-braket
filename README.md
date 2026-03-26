@@ -1,16 +1,19 @@
 # rqm-braket
 
-Amazon Braket backend for the **Resonant Quantum Mechanics (RQM)** ecosystem.
+Amazon Braket **lowering and execution bridge** for the **Resonant Quantum
+Mechanics (RQM)** ecosystem.
 
-`rqm-braket` executes **compiled RQM programs** on:
+`rqm-braket` receives **compiler-optimized circuit representations** from
+`rqm-compiler` and translates them into Amazon Braket circuit and task objects,
+then executes them on:
 
 - the **Amazon Braket Local Simulator**
 - **AWS Braket quantum devices**
 
-This package is a **backend adapter**, not a compiler and not a math engine.
-It also serves as the **execution engine** for **RQM Studio** (via `rqm-api`),
-supporting synchronous and asynchronous job submission, device discovery, and
-descriptor-first workflows.
+This package is a **backend adapter / execution bridge**, not a compiler, not a
+math engine, and not the owner of the public circuit schema.  The canonical
+external circuit IR lives in `rqm-circuits`; optimization logic lives in
+`rqm-compiler`.  `rqm-braket` is the final, AWS-facing step in that pipeline.
 
 ---
 
@@ -21,17 +24,23 @@ The RQM software stack is intentionally layered:
 ```
               rqm-docs
                   |
-  -----------------------------------
-  |               |                |
-rqm-core      rqm-compiler     rqm-notebooks
+  -------------------------------------------
+  |               |                         |
+rqm-core      rqm-circuits             rqm-notebooks
+                  |
+            rqm-compiler
                   |
         ----------------------
         |                    |
     rqm-qiskit          rqm-braket
-                              |
-                          rqm-api
-                              |
-                         RQM Studio
+        |                    |
+        └────────────────────┘
+                  |
+            rqm-optimize  (optional)
+                  |
+              rqm-api
+                  |
+             RQM Studio
 ```
 
 ### Layer responsibilities
@@ -39,11 +48,42 @@ rqm-core      rqm-compiler     rqm-notebooks
 | Layer            | Responsibility |
 |------------------|----------------|
 | `rqm-core`       | Canonical math (quaternion, spinor, Bloch, SU(2)) |
-| `rqm-compiler`   | Compile RQM objects into backend-agnostic instructions |
-| `rqm-braket`     | Execute compiled programs on Amazon Braket |
-| `rqm-qiskit`     | Execute compiled programs on Qiskit |
+| `rqm-circuits`   | Canonical **external / public** circuit IR — the shared schema for Studio, API, and inter-service communication |
+| `rqm-compiler`   | Parse, optimize, and rewrite circuits in an internal model; produce backend-ready instruction sequences |
+| `rqm-braket`     | **Lower** compiler output into Amazon Braket objects; **execute** on local simulator or AWS devices |
+| `rqm-qiskit`     | Lower compiler output into Qiskit objects; execute on IBM / Qiskit devices |
+| `rqm-optimize`   | Optional backend-adjacent optimization / compression (post-compiler, pre-execution) |
 | `rqm-api`        | REST API layer exposing backends to RQM Studio |
 | `rqm-notebooks`  | Examples, demos, tutorials |
+
+### Input boundary
+
+The typical data flow from an external caller through to execution is:
+
+```
+RQM Studio / API caller
+        │ (rqm-circuits payload)
+        ▼
+   rqm-circuits  ←  public/external circuit schema lives here
+        │ (parsed & validated)
+        ▼
+   rqm-compiler  ←  optimization, rewriting, instruction lowering
+        │ (compiler-internal circuit or descriptor list)
+        ▼
+   rqm-braket    ←  Braket lowering & execution (this package)
+        │ (Braket Circuit + task)
+        ▼
+  Amazon Braket / AWS
+```
+
+External callers (RQM Studio, `rqm-api`) originate from **`rqm-circuits`**
+payloads.  `rqm-compiler` validates and optimizes those payloads.
+`rqm-braket` only sees the compiler-produced output — it does **not** parse
+or own the public wire format.
+
+If `rqm-braket` exposes helper functions that accept compiler `Circuit`
+objects or descriptor lists directly (e.g. `run_descriptors`, `to_backend_circuit`),
+those helpers assume upstream parsing and validation have already happened.
 
 ---
 
@@ -144,6 +184,11 @@ print(result.counts)
 
 This is the primary API entry point for `rqm-api` / RQM Studio.
 
+> **Note:** In production, descriptor lists originate from `rqm-circuits`
+> payloads that have been parsed and optimized by `rqm-compiler` upstream.
+> `rqm-braket` receives the compiler-produced output and does not validate
+> the public wire format itself.
+
 ---
 
 ### 6. Result Wrapping
@@ -216,22 +261,31 @@ q = Quaternion.from_axis_angle("z", math.pi / 2)
 
 ---
 
-## What This Package Does NOT Do
+## What This Package Owns and Does NOT Own
 
-`rqm-braket` does **not implement** canonical quantum mathematics.
+### rqm-braket owns
 
-It **delegates** all math operations to `rqm-core`:
+| Capability | Description |
+|-----------|-------------|
+| Braket lowering | Translation of compiler output into Amazon Braket `Circuit` / task objects |
+| Backend execution helpers | `run_local`, `run_device`, `run_device_async` |
+| AWS / Braket device integration | Device discovery, task submission, status polling |
+| Result normalization | `BraketResult` wrapper around Braket task outputs |
 
-| Operation | Owner |
-|-----------|-------|
-| Quaternion algebra | `rqm-core` |
+### rqm-braket does NOT own
+
+| Concern | Owner |
+|---------|-------|
+| Quaternion / SU(2) math | `rqm-core` |
 | Spinor normalization | `rqm-core` |
 | Bloch sphere conversions | `rqm-core` |
-| SU(2) matrix math | `rqm-core` |
-| Circuit compilation logic | `rqm-compiler` |
-| Backend-agnostic instruction design | `rqm-compiler` |
+| **Canonical external circuit schema** | **`rqm-circuits`** |
+| Optimization pass design | `rqm-compiler` |
+| Internal circuit compilation logic | `rqm-compiler` |
+| API wire format | `rqm-circuits` / `rqm-api` |
+| Studio payload format | `rqm-circuits` / `rqm-api` |
 
-The rule is: **rqm-braket may call math, but never define it.**
+The rule: **rqm-braket may call math and compiler APIs, but never define them.**
 
 ---
 
@@ -275,7 +329,7 @@ print(result.counts)
 ### Mode 1 — Compiler-first (recommended for production)
 
 ```
-rqm-compiler → compiled_program → backend.run(...)
+rqm-circuits → rqm-compiler → compiled_program → backend.run(...)
 ```
 
 ```python
@@ -291,10 +345,15 @@ print(result.counts)
 
 Intended for: researchers, engineers, production workflows.
 
+> **Note:** In a full stack flow, the gate sequence originates as an
+> `rqm-circuits` payload, is parsed and optimized by `rqm-compiler`, and
+> the compiler's output is then passed into `rqm-braket`.  Using `RQMGate`
+> directly (as above) is fine for direct scripting and experiments.
+
 ### Mode 2 — Descriptor-first (recommended for API layer)
 
 ```
-rqm-api → descriptors (JSON) → run_descriptors(...)
+rqm-circuits → rqm-compiler → descriptors (JSON) → run_descriptors(...)
 ```
 
 ```python
@@ -309,6 +368,11 @@ print(result.to_dict(include_probabilities=True))
 ```
 
 Intended for: the `rqm-api` layer and RQM Studio integration.
+
+> **Note:** Descriptor lists are the compiler-internal format produced by
+> `rqm_compiler.Circuit.to_descriptors()`.  In Studio / API workflows the
+> original circuit is expressed in `rqm-circuits` format and is parsed and
+> optimized by `rqm-compiler` before descriptors reach `rqm-braket`.
 
 ### Mode 3 — Asynchronous device execution
 
@@ -371,14 +435,19 @@ Intended for: students, tutorials, quick experiments.
 RQM Studio communicates with `rqm-api`, which calls into `rqm-braket`.
 The recommended call pattern is:
 
-1. **Design circuit** in RQM Studio UI → `rqm-compiler` compiles to descriptors.
-2. **Choose device** via `GET /v1/devices` → calls `list_devices()`.
-3. **Submit job** via `POST /v1/run/async` → calls `run_device_async(...)`, returns `task_arn`.
-4. **Poll status** via `GET /v1/tasks/<task_arn>/status` → calls `get_task_status(task_arn)`.
-5. **Retrieve result** via `GET /v1/tasks/<task_arn>/result` → calls `get_task_result(task_arn)`.
-6. **Visualize** result in RQM Studio UI.
+1. **Design circuit** in RQM Studio UI → expressed as an `rqm-circuits` payload.
+2. **Compile** via `rqm-compiler` → validates, optimizes, and produces descriptors.
+3. **Choose device** via `GET /v1/devices` → calls `list_devices()`.
+4. **Submit job** via `POST /v1/run/async` → calls `run_device_async(...)`, returns `task_arn`.
+5. **Poll status** via `GET /v1/tasks/<task_arn>/status` → calls `get_task_status(task_arn)`.
+6. **Retrieve result** via `GET /v1/tasks/<task_arn>/result` → calls `get_task_result(task_arn)`.
+7. **Visualize** result in RQM Studio UI.
 
 For synchronous (blocking) local or device runs use `POST /v1/run`.
+
+`rqm-braket` only participates from step 4 onward.  The public circuit schema
+and wire format belong to `rqm-circuits`; `rqm-braket` receives already-
+compiled / already-validated data.
 
 ### Integrating the Blueprint
 
@@ -633,12 +702,13 @@ All tests are:
 All physics and math operations are delegated to `rqm-core`:
 
 ```
-rqm-core     = physics + math
-rqm-compiler = structure
-rqm-braket   = translation + execution
+rqm-core      = physics + math
+rqm-circuits  = public/external circuit schema
+rqm-compiler  = optimization + internal instruction model
+rqm-braket    = Braket lowering + execution
 ```
 
-The rule: **rqm-braket may call math, but never define it.**
+The rule: **rqm-braket may call math and compiler APIs, but never define them.**
 
 ---
 
@@ -649,15 +719,26 @@ The rule: **rqm-braket may call math, but never define it.**
 * no duplicated logic
 * no second IR
 * no math reimplementation
+* no redefinition of the public circuit schema
 
 ---
 
 ### Compiler Boundary
 
-All inputs come from:
+Direct inputs to `rqm-braket` come from:
 
 ```
 rqm-compiler
+```
+
+The full upstream path is:
+
+```
+rqm-circuits  (public schema)
+      ↓
+rqm-compiler  (optimization / internal IR)
+      ↓
+rqm-braket    (Braket lowering + execution)
 ```
 
 This ensures:
@@ -665,6 +746,7 @@ This ensures:
 * backend independence
 * clean separation of concerns
 * extensibility to new platforms
+* `rqm-braket` never owns or parses the public wire format
 
 ---
 

@@ -4,8 +4,11 @@ rqm_braket.types
 
 Type definitions for the rqm-braket bridge.
 
-These types align with the canonical descriptor format produced by
-``rqm-compiler``'s ``Circuit.to_descriptors()`` method.
+These types align with the **compiler-internal descriptor format** produced by
+``rqm-compiler``'s ``Circuit.to_descriptors()`` method.  They are **not** the
+canonical external circuit schema; that lives in ``rqm-circuits``.  By the
+time data reaches ``rqm-braket`` it has already been parsed and validated
+upstream (typically by ``rqm-circuits`` and ``rqm-compiler``).
 
 A single gate descriptor is a plain dict:
 
@@ -27,11 +30,13 @@ from __future__ import annotations
 from typing import Any
 
 # NOTE:
-# Descriptor is the canonical backend-agnostic IR produced by rqm-compiler.
-# This format must remain stable and JSON-serializable.
+# Descriptor is the compiler-internal IR produced by rqm-compiler.
+# The public/external circuit schema is owned by rqm-circuits.
+# By the time descriptors reach rqm-braket they have already been validated
+# and optimized upstream. This format must remain stable and JSON-serializable.
 # Backends must consume descriptors but must not redefine them.
 
-#: A single gate descriptor in canonical rqm-compiler format.
+#: A single gate descriptor in rqm-compiler internal format.
 Descriptor = dict[str, Any]
 
 #: An ordered list of gate descriptors comprising a compiled program.
