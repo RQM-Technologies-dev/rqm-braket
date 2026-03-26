@@ -2,14 +2,25 @@
 rqm_braket
 ==========
 
-Amazon Braket backend adapter for the RQM ecosystem.
+Amazon Braket lowering and execution bridge for the RQM ecosystem.
 
-This package translates compiled quantum programs into Amazon Braket circuits
-and provides helpers for executing those circuits on the local simulator or
-on AWS Braket devices.
+``rqm-braket`` is **downstream of rqm-compiler** in the RQM stack.  It
+receives compiler-optimized circuit representations and translates them into
+Amazon Braket circuit and task objects, then executes them on the local
+simulator or on AWS Braket devices.
 
-``rqm-braket`` is a **backend bridge**, not a math engine.  All canonical
-mathematics (quaternion, spinor, Bloch, SU(2)) belongs in ``rqm-core``.
+Stack position::
+
+    rqm-circuits  ← public/external circuit schema (not owned here)
+         ↓
+    rqm-compiler  ← optimization + internal IR (not owned here)
+         ↓
+    rqm-braket    ← Braket lowering + execution (this package)
+
+``rqm-braket`` is a **backend bridge**.  It does not implement canonical
+mathematics (that belongs in ``rqm-core``), does not define the public
+circuit schema (that belongs in ``rqm-circuits``), and does not perform
+circuit optimization (that belongs in ``rqm-compiler``).
 
 Public API
 ----------

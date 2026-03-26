@@ -2,8 +2,18 @@
 rqm_braket.translator
 =====================
 
-Translation layer from compiled gate-instruction sequences into Amazon Braket
-``Circuit`` objects.
+Translation (lowering) layer from compiler gate-instruction sequences into
+Amazon Braket ``Circuit`` objects.
+
+``rqm-braket`` is downstream of ``rqm-compiler`` in the RQM stack:
+
+.. code-block:: text
+
+    rqm-circuits  (public/external circuit schema)
+         ↓
+    rqm-compiler  (optimization, internal IR)
+         ↓
+    rqm-braket    (Braket lowering — this module)
 
 This module defines the primary translation API used by ``rqm-braket``:
 
