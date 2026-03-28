@@ -56,6 +56,13 @@ Install the optional ``[api]`` extra to pull in Flask:
 
 from __future__ import annotations
 
+from importlib.util import find_spec
+
+if find_spec("flask") is None:
+    raise ImportError(
+        "rqm_braket.api requires Flask. Install the optional dependency with 'pip install rqm-braket[api]'."
+    )
+
 from flask import Blueprint, Response, jsonify, request
 
 from rqm_braket.execution import (

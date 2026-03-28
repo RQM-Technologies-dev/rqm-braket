@@ -22,78 +22,17 @@ mathematics (that belongs in ``rqm-core``), does not define the public
 circuit schema (that belongs in ``rqm-circuits``), and does not perform
 circuit optimization (that belongs in ``rqm-compiler``).
 
-Public API
-----------
-BraketBackend
-    High-level backend object: compile, run locally, run on AWS device,
-    submit asynchronous jobs, run from descriptors.
-
-api_blueprint
-    Flask ``Blueprint`` exposing REST API endpoints for circuit execution
-    and device discovery.  Mount in your ``rqm-api`` Flask application with
-    ``app.register_blueprint(api_blueprint, url_prefix="/v1")``.
-
-BraketTranslator
-    Translates compiled programs / gate sequences into Braket ``Circuit``.
-
-RQMGate
-    Typed gate descriptor.  Satisfies the ``CompiledInstruction`` protocol.
-
-compile_to_braket_circuit(program)
-    Convenience function: translate a compiled program to a Braket circuit.
-
-to_backend_circuit(circuit, *, optimize=False)
-    Compiler-integrated translation: accepts an ``rqm_compiler.Circuit``,
-    compiles it (and optionally optimizes it), then returns a Braket circuit.
-    Requires ``rqm-compiler`` to be installed.
-
-run_local(program_or_circuit, shots=100)
-    Execute on the local Braket state-vector simulator (no AWS credentials).
-
-run_device(program_or_circuit, device_arn, s3_folder, shots=100, **kwargs)
-    Execute on a remote AWS Braket device (synchronous).
-
-run_device_async(program_or_circuit, device_arn, s3_folder, shots=100, **kwargs)
-    Submit to a remote AWS Braket device and return the task ARN (asynchronous).
-
-get_task_status(task_arn)
-    Return the current status of an AWS Braket task.
-
-get_task_result(task_arn)
-    Retrieve the result of a completed AWS Braket task.
-
-list_devices(device_types=None)
-    List available AWS Braket devices with optional type filter.
-
-run_descriptors(descriptors, shots=100, backend="local", ...)
-    Translate canonical descriptors and execute the resulting circuit.
-
-BraketResult
-    Friendly wrapper around Braket task results.
-
-BraketDeviceError
-    Exception raised when a Braket device or task operation fails.
-
-rqm-core re-exports
--------------------
-The following symbols are re-exported from :mod:`rqm_core` for user
-convenience.  All canonical mathematics lives in ``rqm-core``.
-
-Quaternion
-    Unit-friendly quaternion ``q = w + x·i + y·j + z·k`` from
-    :mod:`rqm_core`.
-
-spinor_to_circuit(alpha, beta, target=0)
-    Bridge: prepare a qubit state from a spinor; delegates Bloch math to
-    :mod:`rqm_core`.
-
-bloch_to_circuit(theta, phi, target=0)
-    Bridge: prepare a qubit state from Bloch-sphere polar angles.
+The base package import is intentionally lightweight and does not require
+Flask.  Flask integration lives in :mod:`rqm_braket.api` and is loaded only
+when API-specific symbols (for example ``api_blueprint``) are accessed.
 """
+
+from __future__ import annotations
+
+from typing import Any
 
 from rqm_core import Quaternion
 
-from rqm_braket.api import api_blueprint
 from rqm_braket.backend import BraketBackend
 from rqm_braket.execution import (
     BraketDeviceError,
@@ -134,5 +73,20 @@ __all__ = [
     "spinor_to_circuit",
     "bloch_to_circuit",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    """Lazily expose optional API symbols.
+
+    ``rqm_braket.api`` depends on Flask, which is declared in the optional
+    ``[api]`` extra.  Delaying the import keeps ``import rqm_braket`` working
+    in base installations that do not include Flask.
+    """
+    if name == "api_blueprint":
+        from rqm_braket.api import api_blueprint
+
+        return api_blueprint
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __version__ = "0.2.0"

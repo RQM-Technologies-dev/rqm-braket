@@ -18,6 +18,8 @@ from collections import Counter
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+pytest.importorskip("flask")
 from flask import Flask
 
 from rqm_braket.api import api_blueprint
