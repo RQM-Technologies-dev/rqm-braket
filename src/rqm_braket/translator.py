@@ -34,8 +34,7 @@ This module defines the primary translation API used by ``rqm-braket``:
 
 No canonical quantum mathematics lives here.  All gate parameters must
 already be fully resolved; this module only maps instruction metadata to
-Braket circuit operations.  SU(2) matrix construction for ``u1q`` is
-delegated to :mod:`rqm_core`.
+Braket circuit operations.
 """
 
 from __future__ import annotations
@@ -88,6 +87,12 @@ TWO_QUBIT_GATES: dict[str, str] = {
 
 #: Gates that are silently treated as no-ops (backend does not support them).
 NOOP_GATES: frozenset[str] = frozenset({"BARRIER"})
+
+_U1Q_HARDWARE_UNSUPPORTED_ERROR = (
+    "U1Q/arbitrary-unitary lowering is not supported in rqm-braket hardware "
+    "translation. Lower to named gates in rqm-compiler before submitting to "
+    "Braket hardware."
+)
 
 
 # ---------------------------------------------------------------------------
@@ -213,6 +218,18 @@ class BraketTranslator:
     ... ])
     """
 
+    def __init__(self, *, allow_local_u1q_unitary: bool = False) -> None:
+        """Initialize a Braket translator.
+
+        Parameters
+        ----------
+        allow_local_u1q_unitary:
+            Temporary compatibility flag for **local simulation only**.
+            When ``True``, ``U1Q`` is lowered to ``Circuit.unitary(...)``.
+            When ``False`` (default), ``U1Q`` is rejected with a local error.
+        """
+        self.allow_local_u1q_unitary = allow_local_u1q_unitary
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -311,7 +328,7 @@ class BraketTranslator:
                     "Gate 'U1Q' requires quaternion params "
                     "{'w': ..., 'x': ..., 'y': ..., 'z': ...}."
                 )
-            self._apply_u1q(circuit, target, params)
+            self._handle_u1q(circuit, target, params)
 
         elif gate_name in SINGLE_QUBIT_GATES:
             target = _require_int_attr(instruction, "target", gate_name)
@@ -380,7 +397,7 @@ class BraketTranslator:
         elif gate_name == "U1Q":
             if not targets:
                 raise ValueError("Gate 'U1Q' requires at least one target qubit.")
-            self._apply_u1q(circuit, targets[0], params)
+            self._handle_u1q(circuit, targets[0], params)
 
         elif gate_name in SINGLE_QUBIT_GATES:
             for t in targets:
@@ -410,14 +427,27 @@ class BraketTranslator:
                 f"Supported two-qubit: {sorted(TWO_QUBIT_GATES)}."
             )
 
+    def _handle_u1q(self, circuit: Circuit, target: int, params: dict[str, Any]) -> None:
+        """Handle ``u1q`` translation according to translator mode.
+
+        ``rqm-braket`` does not own hardware-facing arbitrary-unitary lowering
+        policy.  By default, this translator rejects raw ``U1Q`` for hardware
+        submission paths and requires compiler-side lowering to named gates.
+        A temporary local-simulator compatibility mode may be enabled via
+        ``allow_local_u1q_unitary=True``.
+        """
+        if not self.allow_local_u1q_unitary:
+            raise ValueError(_U1Q_HARDWARE_UNSUPPORTED_ERROR)
+        self._apply_u1q_local_compat(circuit, target, params)
+
     @staticmethod
-    def _apply_u1q(circuit: Circuit, target: int, params: dict[str, Any]) -> None:
-        """Apply a ``u1q`` gate from quaternion params.
+    def _apply_u1q_local_compat(circuit: Circuit, target: int, params: dict[str, Any]) -> None:
+        """Apply a local-simulator compatibility ``u1q`` unitary.
 
         Delegates SU(2) matrix construction to :mod:`rqm_core` via
         :meth:`rqm_core.Quaternion.to_su2_matrix`, then applies the result as
         a Braket ``Unitary`` gate.  No quaternion mathematics is implemented
-        locally.
+        locally.  This compatibility path is intentionally local-only.
 
         Parameters
         ----------

@@ -61,6 +61,13 @@ def run_local(
     offline.  It is the recommended way to validate circuits in CI and
     during development.
 
+    Notes
+    -----
+    ``run_local`` enables a temporary local-only compatibility path for
+    raw ``U1Q`` descriptors/instructions by allowing translation through
+    ``Circuit.unitary(...)``. Hardware-facing helpers intentionally do not
+    enable that path.
+
     Parameters
     ----------
     program_or_circuit:
@@ -84,7 +91,7 @@ def run_local(
     """
     from braket.devices import LocalSimulator
 
-    circuit = _resolve_circuit(program_or_circuit)
+    circuit = _resolve_circuit(program_or_circuit, allow_local_u1q_unitary=True)
     device = LocalSimulator()
     task = device.run(circuit, shots=shots)
     return BraketResult(task.result())
@@ -447,13 +454,14 @@ def run_descriptors(
     >>> result = run_descriptors(descriptors, shots=200)
     >>> print(result.counts)  # e.g. Counter({'00': 103, '11': 97})
     """
-    translator = BraketTranslator()
-    circuit = translator.translate_descriptors(descriptors)
-
     if backend == "local":
+        translator = BraketTranslator(allow_local_u1q_unitary=True)
+        circuit = translator.translate_descriptors(descriptors)
         return run_local(circuit, shots=shots)
 
     if backend == "device":
+        translator = BraketTranslator()
+        circuit = translator.translate_descriptors(descriptors)
         if device_arn is None:
             raise ValueError(
                 "run_descriptors: 'device_arn' must be provided when backend='device'."
@@ -474,7 +482,11 @@ def run_descriptors(
 # ---------------------------------------------------------------------------
 
 
-def _resolve_circuit(program_or_circuit: Circuit | Any) -> Circuit:
+def _resolve_circuit(
+    program_or_circuit: Circuit | Any,
+    *,
+    allow_local_u1q_unitary: bool = False,
+) -> Circuit:
     """Return a Braket ``Circuit`` from *program_or_circuit*.
 
     If the argument is already a ``Circuit``, it is returned unchanged.
@@ -482,4 +494,6 @@ def _resolve_circuit(program_or_circuit: Circuit | Any) -> Circuit:
     """
     if isinstance(program_or_circuit, Circuit):
         return program_or_circuit
-    return BraketTranslator().to_circuit(program_or_circuit)
+    return BraketTranslator(
+        allow_local_u1q_unitary=allow_local_u1q_unitary
+    ).to_circuit(program_or_circuit)
