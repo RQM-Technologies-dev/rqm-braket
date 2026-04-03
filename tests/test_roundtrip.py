@@ -3,7 +3,7 @@ Tests for new rqm-API functionality added in the rqm-API update.
 
 Covers:
 - translate_descriptors (canonical descriptor format)
-- u1q gate (quaternion → SU(2) → Braket Unitary)
+- u1q policy boundaries (hardware rejection, local-only compatibility)
 - measure gate
 - barrier gate (no-op)
 - to_backend_circuit (rqm-compiler integration)
@@ -19,12 +19,12 @@ import math
 from collections import Counter
 from unittest.mock import MagicMock, patch
 
-import numpy as np
 import pytest
 from braket.circuits import Circuit
 
 import rqm_braket
 from rqm_braket.backend import BraketBackend
+from rqm_braket.execution import run_device, run_local
 from rqm_braket.results import BraketResult
 from rqm_braket.translator import (
     BraketTranslator,
@@ -211,50 +211,26 @@ def test_barrier_gate_via_descriptor_is_noop() -> None:
 
 
 # ---------------------------------------------------------------------------
-# u1q gate (quaternion → SU(2) unitary)
+# u1q policy boundaries
 # ---------------------------------------------------------------------------
 
 
-def test_u1q_identity_quaternion_via_descriptor() -> None:
-    """u1q with identity quaternion (w=1, xyz=0) acts as identity."""
+def test_hardware_translation_rejects_u1q_descriptor_locally() -> None:
+    """Default (hardware-oriented) descriptor translation rejects raw u1q."""
     translator = BraketTranslator()
-    circuit = translator.translate_descriptors([
-        {"gate": "u1q", "targets": [0], "controls": [], "params": {
-            "w": 1.0, "x": 0.0, "y": 0.0, "z": 0.0,
-        }},
-    ])
-    assert isinstance(circuit, Circuit)
-    assert circuit.qubit_count == 1
+    with pytest.raises(
+        ValueError,
+        match="U1Q/arbitrary-unitary lowering is not supported",
+    ):
+        translator.translate_descriptors([
+            {"gate": "u1q", "targets": [0], "controls": [], "params": {
+                "w": 1.0, "x": 0.0, "y": 0.0, "z": 0.0,
+            }},
+        ])
 
 
-def test_u1q_x_rotation_via_descriptor() -> None:
-    """u1q with π rotation around X axis corresponds to X gate."""
-    translator = BraketTranslator()
-    circuit = translator.translate_descriptors([
-        {"gate": "u1q", "targets": [0], "controls": [], "params": {
-            "w": 0.0, "x": 1.0, "y": 0.0, "z": 0.0,
-        }},
-    ])
-    assert circuit.qubit_count == 1
-
-
-def test_u1q_arbitrary_quaternion_via_descriptor() -> None:
-    """u1q with an arbitrary normalised quaternion produces a valid circuit."""
-    # 60° rotation around Z axis uses half-angle = 30° in the quaternion formula:
-    # q = (cos(θ/2), 0, 0, sin(θ/2)) with θ = 60°, so θ/2 = 30° = π/6
-    half_angle = math.pi / 6  # θ/2 = 30°
-    w, z = math.cos(half_angle), math.sin(half_angle)
-    translator = BraketTranslator()
-    circuit = translator.translate_descriptors([
-        {"gate": "u1q", "targets": [0], "controls": [], "params": {
-            "w": w, "x": 0.0, "y": 0.0, "z": z,
-        }},
-    ])
-    assert circuit.qubit_count == 1
-
-
-def test_u1q_via_rqmgate_with_params() -> None:
-    """u1q via RQMGate with params dict works correctly."""
+def test_hardware_translation_rejects_u1q_rqmgate_locally() -> None:
+    """Default (hardware-oriented) attribute-path translation rejects raw u1q."""
     translator = BraketTranslator()
 
     class _U1QGate:
@@ -264,29 +240,86 @@ def test_u1q_via_rqmgate_with_params() -> None:
         angle = None
         params = {"w": 1.0, "x": 0.0, "y": 0.0, "z": 0.0}
 
-    circuit = translator.to_circuit([_U1QGate()])
-    assert isinstance(circuit, Circuit)
+    with pytest.raises(
+        ValueError,
+        match="U1Q/arbitrary-unitary lowering is not supported",
+    ):
+        translator.to_circuit([_U1QGate()])
+
+
+def test_local_only_u1q_compatibility_is_explicit_and_uses_unitary() -> None:
+    """Local compatibility mode must be explicit and uses Circuit.unitary."""
+    translator = BraketTranslator(allow_local_u1q_unitary=True)
+    with patch.object(
+        Circuit,
+        "unitary",
+        autospec=True,
+        wraps=Circuit.unitary,
+    ) as unitary_mock:
+        circuit = translator.translate_descriptors([
+            {"gate": "u1q", "targets": [0], "controls": [], "params": {
+                "w": 1.0, "x": 0.0, "y": 0.0, "z": 0.0,
+            }},
+        ])
     assert circuit.qubit_count == 1
+    assert unitary_mock.call_count == 1
 
 
-def test_u1q_missing_params_raises() -> None:
-    """u1q without params raises ValueError."""
+def test_local_execution_accepts_raw_u1q_via_explicit_local_compatibility() -> None:
+    """run_local keeps temporary raw-u1q compatibility for backward compatibility."""
+    class _U1QGate:
+        gate = "U1Q"
+        target = 0
+        control = None
+        angle = None
+        params = {"w": 1.0, "x": 0.0, "y": 0.0, "z": 0.0}
+
+    result = run_local([_U1QGate()], shots=10)
+    assert isinstance(result, BraketResult)
+    assert result.shots == 10
+
+
+def test_hardware_oriented_translation_path_does_not_emit_unitary_for_u1q() -> None:
+    """Hardware-oriented translation fails before any Circuit.unitary call."""
     translator = BraketTranslator()
-    with pytest.raises(ValueError, match="U1Q"):
-        translator.to_circuit([RQMGate(gate="U1Q", target=0)])
+    with patch.object(
+        Circuit,
+        "unitary",
+        autospec=True,
+        wraps=Circuit.unitary,
+    ) as unitary_mock:
+        with pytest.raises(
+            ValueError,
+            match="U1Q/arbitrary-unitary lowering is not supported",
+        ):
+            translator.translate_descriptors([
+                {"gate": "u1q", "targets": [0], "controls": [], "params": {
+                    "w": 1.0, "x": 0.0, "y": 0.0, "z": 0.0,
+                }},
+            ])
+    assert unitary_mock.call_count == 0
 
 
-def test_u1q_matrix_is_unitary() -> None:
-    """The SU(2) matrix produced for a u1q gate is unitary."""
-    from rqm_core import Quaternion
+def test_run_device_rejects_raw_u1q_before_aws_submission() -> None:
+    """run_device raises local policy error before creating/running AwsDevice."""
+    class _U1QGate:
+        gate = "U1Q"
+        target = 0
+        control = None
+        angle = None
+        params = {"w": 1.0, "x": 0.0, "y": 0.0, "z": 0.0}
 
-    # Test with a non-trivial quaternion: 90° rotation around Y axis.
-    # Quaternion half-angle = θ/2 = 45° = π/4.
-    half_angle = math.pi / 4  # θ/2 for a 90° rotation
-    q = Quaternion(math.cos(half_angle), 0.0, math.sin(half_angle), 0.0)
-    matrix = np.array(q.to_su2_matrix(), dtype=complex)
-    product = matrix @ matrix.conj().T
-    assert np.allclose(product, np.eye(2), atol=1e-10)
+    with patch.dict("sys.modules", {"braket.aws": MagicMock()}):
+        with pytest.raises(
+            ValueError,
+            match="U1Q/arbitrary-unitary lowering is not supported",
+        ):
+            run_device(
+                [_U1QGate()],
+                device_arn="arn:aws:braket:::device/qpu/test",
+                s3_folder=("bucket", "prefix"),
+                shots=1,
+            )
 
 
 # ---------------------------------------------------------------------------
