@@ -17,6 +17,14 @@ external circuit IR lives in `rqm-circuits`; optimization logic lives in
 
 ---
 
+## Better Coordinates for Better Measurement
+
+This project uses quaternions because they preserve more of what physical systems are doing: phase, rotation, orientation, polarization, and coherence. Standard complex-number methods are powerful, but they can flatten these relationships too early. Quaternionic coordinates keep them together as one structured object, giving software a richer view of the measured system.
+
+For RQM Technologies, better coordinates mean better measurement: more informative diagnostics, cleaner transformations, and more precise control across quantum, wave, sensing, imaging, and communications workflows.
+
+---
+
 ## Architecture Overview
 
 The RQM software stack is intentionally layered:
