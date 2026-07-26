@@ -804,6 +804,6 @@ Future improvements may include:
 
 ## License
 
-MIT License
+Apache License 2.0
 
 Copyright (c) RQM Technologies
