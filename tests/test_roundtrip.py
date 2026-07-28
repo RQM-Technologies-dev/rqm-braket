@@ -250,19 +250,25 @@ def test_hardware_translation_rejects_u1q_rqmgate_locally() -> None:
 def test_local_only_u1q_compatibility_is_explicit_and_uses_unitary() -> None:
     """Local compatibility mode must be explicit and uses Circuit.unitary."""
     translator = BraketTranslator(allow_local_u1q_unitary=True)
-    with patch.object(
-        Circuit,
-        "unitary",
-        autospec=True,
-        wraps=Circuit.unitary,
-    ) as unitary_mock:
+    original_unitary = Circuit.unitary
+    calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+
+    def tracked_unitary(
+        circuit: Circuit,
+        *args: object,
+        **kwargs: object,
+    ) -> Circuit:
+        calls.append((args, kwargs))
+        return original_unitary(circuit, *args, **kwargs)
+
+    with patch.object(Circuit, "unitary", tracked_unitary):
         circuit = translator.translate_descriptors([
             {"gate": "u1q", "targets": [0], "controls": [], "params": {
                 "w": 1.0, "x": 0.0, "y": 0.0, "z": 0.0,
             }},
         ])
     assert circuit.qubit_count == 1
-    assert unitary_mock.call_count == 1
+    assert len(calls) == 1
 
 
 def test_local_execution_accepts_raw_u1q_via_explicit_local_compatibility() -> None:
