@@ -5,8 +5,9 @@ rqm_braket.api
 Flask Blueprint exposing rqm-braket execution and device-discovery functions
 as REST API endpoints.
 
-Mount this blueprint in your ``rqm-api`` Flask application to enable
-end-to-end quantum job submission from RQM Studio:
+This compatibility blueprint is for standalone Flask services. The canonical
+RQM Studio service is ``quantum-compiler-api`` and integrates the execution
+bridge directly rather than mounting this blueprint:
 
 .. code-block:: python
 

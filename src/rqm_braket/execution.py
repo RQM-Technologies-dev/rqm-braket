@@ -405,7 +405,7 @@ def run_descriptors(
 ) -> BraketResult:
     """Translate canonical descriptors and execute the resulting circuit.
 
-    This is the primary entry point for the **API layer** (e.g. ``rqm-api``).
+    This is the primary entry point for the API layer (``quantum-compiler-api``).
     It accepts the canonical descriptor format produced by
     ``rqm_compiler.Circuit.to_descriptors()``, converts them to a Braket
     ``Circuit``, and runs it on the requested backend.

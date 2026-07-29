@@ -53,7 +53,7 @@ rqm-core      rqm-circuits             rqm-notebooks
                   |
             rqm-optimize  (optional)
                   |
-              rqm-api
+      quantum-compiler-api
                   |
              RQM Studio
 ```
@@ -68,7 +68,7 @@ rqm-core      rqm-circuits             rqm-notebooks
 | `rqm-braket`     | **Lower** compiler output into Amazon Braket objects; **execute** on local simulator or AWS devices |
 | `rqm-qiskit`     | Lower compiler output into Qiskit objects; execute on IBM / Qiskit devices |
 | `rqm-optimize`   | Optional backend-adjacent optimization / compression (post-compiler, pre-execution) |
-| `rqm-api`        | REST API layer exposing backends to RQM Studio |
+| `quantum-compiler-api` | Canonical REST API and execution service for RQM Studio |
 | `rqm-notebooks`  | Examples, demos, tutorials |
 
 ### Input boundary
@@ -91,7 +91,7 @@ RQM Studio / API caller
   Amazon Braket / AWS
 ```
 
-External callers (RQM Studio, `rqm-api`) originate from **`rqm-circuits`**
+External callers (RQM Studio, `quantum-compiler-api`) originate from **`rqm-circuits`**
 payloads.  `rqm-compiler` validates and optimizes those payloads.
 `rqm-braket` only sees the compiler-produced output — it does **not** parse
 or own the public wire format.
@@ -197,7 +197,7 @@ result = run_descriptors(descriptors, shots=200)
 print(result.counts)
 ```
 
-This is the primary API entry point for `rqm-api` / RQM Studio.
+This is the primary bridge entry point for `quantum-compiler-api` / RQM Studio.
 
 > **Note:** In production, descriptor lists originate from `rqm-circuits`
 > payloads that have been parsed and optimized by `rqm-compiler` upstream.
@@ -297,8 +297,8 @@ q = Quaternion.from_axis_angle("z", math.pi / 2)
 | **Canonical external circuit schema** | **`rqm-circuits`** |
 | Optimization pass design | `rqm-compiler` |
 | Internal circuit compilation logic | `rqm-compiler` |
-| API wire format | `rqm-circuits` / `rqm-api` |
-| Studio payload format | `rqm-circuits` / `rqm-api` |
+| API wire format | `rqm-circuits` / `quantum-compiler-api` |
+| Studio payload format | `rqm-circuits` / `quantum-compiler-api` |
 
 The rule: **rqm-braket may call math and compiler APIs, but never define them.**
 
@@ -382,7 +382,7 @@ result = run_descriptors(descriptors, shots=200)
 print(result.to_dict(include_probabilities=True))
 ```
 
-Intended for: the `rqm-api` layer and RQM Studio integration.
+Intended for: the `quantum-compiler-api` layer and RQM Studio integration.
 
 > **Note:** Descriptor lists are the compiler-internal format produced by
 > `rqm_compiler.Circuit.to_descriptors()`.  In Studio / API workflows the
@@ -447,7 +447,7 @@ Intended for: students, tutorials, quick experiments.
 
 ## Running from RQM Studio
 
-RQM Studio communicates with `rqm-api`, which calls into `rqm-braket`.
+RQM Studio communicates with `quantum-compiler-api`, which calls into `rqm-braket`.
 The recommended call pattern is:
 
 1. **Design circuit** in RQM Studio UI → expressed as an `rqm-circuits` payload.
@@ -502,7 +502,7 @@ qpus = list_devices(device_types=["QPU"])
 
 Device execution requires an S3 bucket for Braket to store task results.
 For large circuits or production deployments, use a dedicated S3 bucket and
-prefix managed by `rqm-api` to consolidate result storage across jobs.
+prefix managed by `quantum-compiler-api` to consolidate result storage across jobs.
 
 ```python
 result = run_descriptors(
@@ -556,13 +556,15 @@ examples/compiled_program_demo.py
 
 ## Public API
 
-### REST API Blueprint (rqm-api integration)
+### Legacy standalone Flask blueprint
 
 ```python
-api_blueprint           # Flask Blueprint — mount in rqm-api Flask application
+api_blueprint           # Flask Blueprint for standalone compatibility services
 ```
 
-Mount in your `rqm-api` application:
+This blueprint is not the canonical Studio API path. New Studio deployments
+integrate the package through `quantum-compiler-api`. For a standalone legacy
+Flask service:
 
 ```python
 from flask import Flask
@@ -805,7 +807,7 @@ Future improvements may include:
 * hybrid Braket workflows
 * richer result analysis
 * multi-qubit optimization paths
-* S3 result storage managed by `rqm-api`
+* S3 result storage managed by `quantum-compiler-api`
 
 ---
 
