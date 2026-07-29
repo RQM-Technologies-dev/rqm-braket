@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=77", "wheel", "setuptools-scm>=8"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "rqm-braket"
-dynamic = ["version"]
+version = "0.2.1"
 description = "Amazon Braket backend adapter for the RQM ecosystem."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -58,11 +58,6 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
-[tool.setuptools_scm]
-tag_regex = "^v(?P<version>\\d+\\.\\d+\\.\\d+)$"
-local_scheme = "no-local-version"
-fallback_version = "0.0.0"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

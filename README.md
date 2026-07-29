@@ -30,7 +30,7 @@ For RQM Technologies, better coordinates mean better measurement: more informati
 The RQM software stack is intentionally layered:
 
 ```
-              rqm-docs
+          RQM-Storefront /docs
                   |
   -------------------------------------------
   |               |                         |

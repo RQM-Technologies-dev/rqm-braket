@@ -89,4 +89,9 @@ def __getattr__(name: str) -> Any:
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-__version__ = "0.2.1"
+try:
+    from importlib.metadata import PackageNotFoundError, version
+
+    __version__ = version("rqm-braket")
+except PackageNotFoundError:
+    __version__ = "0.0.0+unknown"
