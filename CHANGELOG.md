@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/RQM-Technologies-dev/rqm-braket/compare/v0.2.2...v0.2.3) (2026-07-29)
+
+
+### Documentation
+
+* distinguish canonical and legacy Braket integration ([#20](https://github.com/RQM-Technologies-dev/rqm-braket/issues/20)) ([226c165](https://github.com/RQM-Technologies-dev/rqm-braket/commit/226c165cfaee1e2778f2bbd3f0a11f49e7be308d))
+
 ## [0.2.2](https://github.com/RQM-Technologies-dev/rqm-braket/compare/v0.2.1...v0.2.2) (2026-07-29)
 
 
