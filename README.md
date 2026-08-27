@@ -1,5 +1,11 @@
 # rqm-braket
 
+[![PyPI version](https://img.shields.io/pypi/v/rqm-braket.svg)](https://pypi.org/project/rqm-braket/)
+[![Python versions](https://img.shields.io/pypi/pyversions/rqm-braket.svg)](https://pypi.org/project/rqm-braket/)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Documentation](https://img.shields.io/badge/docs-rqmtechnologies.com-blue.svg)](https://docs.rqmtechnologies.com)
+[![Website](https://img.shields.io/badge/website-rqmtechnologies.com-informational.svg)](https://rqmtechnologies.com)
+
 Amazon Braket **lowering and execution bridge** for the **Resonant Quantum
 Mechanics (RQM)** ecosystem.
 
@@ -14,6 +20,32 @@ This package is a **backend adapter / execution bridge**, not a compiler, not a
 math engine, and not the owner of the public circuit schema.  The canonical
 external circuit IR lives in `rqm-circuits`; optimization logic lives in
 `rqm-compiler`.  `rqm-braket` is the final, AWS-facing step in that pipeline.
+
+---
+
+## 🌐 RQM Platform
+
+This repository is part of the RQM Technologies ecosystem.
+
+→ Website: https://rqmtechnologies.com  
+→ Documentation: https://docs.rqmtechnologies.com
+
+---
+
+## Installation
+
+```bash
+pip install rqm-braket
+```
+
+`rqm-braket` depends on `rqm-core` and `amazon-braket-sdk`. Compiled programs
+typically come from `rqm-compiler`.
+
+Development install:
+
+```bash
+pip install -e .
+```
 
 ---
 
@@ -301,20 +333,6 @@ q = Quaternion.from_axis_angle("z", math.pi / 2)
 | Studio payload format | `rqm-circuits` / `quantum-compiler-api` |
 
 The rule: **rqm-braket may call math and compiler APIs, but never define them.**
-
----
-
-## Installation
-
-```bash
-pip install rqm-braket
-```
-
-Development install:
-
-```bash
-pip install -e .
-```
 
 ---
 
@@ -808,6 +826,14 @@ Future improvements may include:
 * richer result analysis
 * multi-qubit optimization paths
 * S3 result storage managed by `quantum-compiler-api`
+
+---
+
+## Next Steps
+
+- 📖 Documentation: https://docs.rqmtechnologies.com
+- 🌐 Website: https://rqmtechnologies.com
+- 🔗 Related package: [`rqm-compiler`](https://github.com/RQM-Technologies-dev/rqm-compiler) — the instruction layer that feeds into this backend
 
 ---
 
