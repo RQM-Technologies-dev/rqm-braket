@@ -27,7 +27,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install compiler 0.4 candidate
+      - name: Install compiler 0.4 candidate (Python 3.11+)
+        if: matrix.python-version != '3.10'
         run: pip install "rqm-compiler @ git+https://github.com/RQM-Technologies-dev/rqm-compiler.git@55faa4e654f2a935255e174fe5722cd9396ac6f2"
 
       - name: Install dependencies
