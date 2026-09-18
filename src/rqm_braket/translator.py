@@ -685,6 +685,7 @@ def _validate_descriptor(op: Descriptor) -> None:
         set(SINGLE_QUBIT_GATES)
         | set(ROTATION_GATES)
         | set(TWO_QUBIT_GATES)
+        | set(TWO_QUBIT_ROTATION_GATES)
         | NOOP_GATES
         | {"MEASURE", "U1Q"}
     )
@@ -695,7 +696,7 @@ def _validate_descriptor(op: Descriptor) -> None:
         )
 
     # --- parameter shapes ----------------------------------------------------
-    if gate_name in ROTATION_GATES:
+    if gate_name in ROTATION_GATES or gate_name in TWO_QUBIT_ROTATION_GATES:
         if "angle" not in params:
             raise ValueError(
                 f"Descriptor for rotation gate '{gate_name}' requires "
