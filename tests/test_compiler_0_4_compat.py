@@ -1,3 +1,6 @@
+import sys
+import pytest
+if sys.version_info < (3,11): pytest.skip("rqm-compiler 0.4 requires Python 3.11+",allow_module_level=True)
 from rqm_compiler import Circuit,compile_representation_aware,lower_circuit_for_backend
 from rqm_braket.translator import to_backend_circuit
 
