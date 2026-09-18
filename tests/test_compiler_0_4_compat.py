@@ -1,10 +1,11 @@
-from rqm_compiler import Circuit,compile_representation_aware
+from rqm_compiler import Circuit,compile_representation_aware,lower_circuit_for_backend
 from rqm_braket.translator import to_backend_circuit
 
 def test_compiler_0_4_candidate_lowers_through_braket():
  c=Circuit(2);c.h(0);c.rxx(0,1,.2);c.rzz(0,1,-.1);c.cx(0,1)
  compiled=compile_representation_aware(c)
- out=to_backend_circuit(compiled.circuit,optimize=False)
+ lowered=lower_circuit_for_backend(compiled.circuit,backend_family="braket_gate_model")
+ out=to_backend_circuit(lowered,optimize=False)
  assert out is not None
  assert len(out.instructions)>0
 
