@@ -76,6 +76,8 @@ ROTATION_GATES: dict[str, str] = {
 
 #: Maps a canonical two-qubit gate name to the Braket method name.
 #: Each entry expects ``(control, target)`` qubits.
+TWO_QUBIT_ROTATION_GATES: dict[str, str] = {"RXX": "xx", "RYY": "yy", "RZZ": "zz"}
+
 TWO_QUBIT_GATES: dict[str, str] = {
     "CNOT": "cnot",
     "CX": "cnot",
@@ -411,6 +413,14 @@ class BraketTranslator:
                 )
             for t in targets:
                 getattr(circuit, ROTATION_GATES[gate_name])(t, float(angle))
+
+        elif gate_name in TWO_QUBIT_ROTATION_GATES:
+            if len(targets) != 2:
+                raise ValueError(f"Gate '{gate_name}' requires exactly two targets.")
+            angle = params.get("angle")
+            if angle is None:
+                raise ValueError(f"Gate '{gate_name}' requires a 'angle' key in params.")
+            getattr(circuit, TWO_QUBIT_ROTATION_GATES[gate_name])(targets[0], targets[1], float(angle))
 
         elif gate_name in TWO_QUBIT_GATES:
             if not controls or not targets:
