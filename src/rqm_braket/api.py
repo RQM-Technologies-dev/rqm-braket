@@ -6,7 +6,7 @@ Flask Blueprint exposing rqm-braket execution and device-discovery functions
 as REST API endpoints.
 
 This compatibility blueprint is for standalone Flask services. The canonical
-RQM Studio service is ``quantum-compiler-api`` and integrates the execution
+RQM Studio service is ``rqm-api`` and integrates the execution
 bridge directly rather than mounting this blueprint:
 
 .. code-block:: python
