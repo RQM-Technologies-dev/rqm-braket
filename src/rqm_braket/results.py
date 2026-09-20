@@ -78,6 +78,11 @@ class BraketResult:
         return {outcome: count / total for outcome, count in self.counts.items()}
 
     @property
+    def measured_qubits(self) -> list[int]:
+        """Qubits in SDK count-bit order (left to right), without reordering."""
+        return list(self.raw.measured_qubits)
+
+    @property
     def shots(self) -> int:
         """Total number of shots (measurements) taken."""
         return int(sum(self.counts.values()))

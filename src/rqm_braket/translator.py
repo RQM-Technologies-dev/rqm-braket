@@ -40,6 +40,7 @@ Braket circuit operations.
 from __future__ import annotations
 
 import numpy as np
+import math
 from dataclasses import dataclass
 from typing import Any, Sequence
 
@@ -62,6 +63,11 @@ SINGLE_QUBIT_GATES: dict[str, str] = {
     "T": "t",
     "I": "i",
     "V": "v",
+    "ID": "i",
+    "SDG": "si",
+    "TDG": "ti",
+    "SX": "v",
+    "SXDG": "vi",
 }
 
 #: Maps a canonical gate name to the corresponding single-angle Braket method.
@@ -72,6 +78,7 @@ ROTATION_GATES: dict[str, str] = {
     "RZ": "rz",
     "PHASESHIFT": "phaseshift",
     "PHASE": "phaseshift",
+    "PHASE_SHIFT": "phaseshift",
 }
 
 #: Maps a canonical two-qubit gate name to the Braket method name.
@@ -423,11 +430,11 @@ class BraketTranslator:
             getattr(circuit, TWO_QUBIT_ROTATION_GATES[gate_name])(targets[0], targets[1], float(angle))
 
         elif gate_name in TWO_QUBIT_GATES:
-            if not controls or not targets:
-                raise ValueError(
-                    f"Gate '{gate_name}' requires both 'controls' and 'targets'."
-                )
-            getattr(circuit, TWO_QUBIT_GATES[gate_name])(controls[0], targets[0])
+            wires = controls + targets
+            getattr(circuit, TWO_QUBIT_GATES[gate_name])(*wires)
+
+        elif gate_name in {"CCX", "CCNOT", "TOFFOLI"}:
+            circuit.ccnot(*controls, *targets)
 
         else:
             raise ValueError(
@@ -481,7 +488,7 @@ class BraketTranslator:
         matrix = np.array(q.to_su2_matrix(), dtype=complex)
         circuit.unitary(matrix=matrix, targets=[target])
 
-    def translate_descriptors(self, descriptors: DescriptorList) -> Circuit:
+    def translate_descriptors(self, descriptors: DescriptorList, *, circuit_factory: Any = Circuit) -> Circuit:
         """Translate a list of canonical descriptor dicts into a Braket ``Circuit``.
 
         This method accepts the output of ``rqm_compiler.Circuit.to_descriptors()``
@@ -495,14 +502,27 @@ class BraketTranslator:
         ----------
         descriptors:
             Ordered list of gate descriptors from ``rqm-compiler``.
+        circuit_factory:
+            Optional SDK-compatible circuit factory, primarily for offline tests.
 
         Returns
         -------
         braket.circuits.Circuit
             The resulting Braket circuit.
         """
-        circuit = Circuit()
+        circuit = circuit_factory()
+        measuring = False
+        measured = set()
         for op in descriptors:
+            _validate_descriptor(op)
+            gate = op['gate'].upper()
+            if gate == 'MEASURE':
+                if measured.intersection(op['targets']):
+                    raise ValueError('Duplicate terminal measurement')
+                measured.update(op['targets'])
+                measuring = True
+            elif measuring and gate not in NOOP_GATES:
+                raise ValueError('Only terminal measurements are supported')
             self._apply_descriptor(circuit, op)
         return circuit
 
@@ -687,13 +707,49 @@ def _validate_descriptor(op: Descriptor) -> None:
         | set(TWO_QUBIT_GATES)
         | set(TWO_QUBIT_ROTATION_GATES)
         | NOOP_GATES
-        | {"MEASURE", "U1Q"}
+        | {"MEASURE", "U1Q", "CCX", "CCNOT", "TOFFOLI"}
     )
     if gate_name not in _ALL_KNOWN_GATES:
         raise ValueError(
             f"Unknown gate '{gate_name}' in descriptor. "
             f"Known gates: {sorted(_ALL_KNOWN_GATES)}."
         )
+
+    if gate_name in TWO_QUBIT_ROTATION_GATES:
+        # Guard raw descriptors before _apply_descriptor converts wire values.
+        if (len(targets) != 2
+                or any(not isinstance(q, int) or isinstance(q, bool) or q < 0 for q in targets)
+                or targets[0] == targets[1]):
+            raise ValueError("Interaction rotation requires two distinct non-negative integer targets.")
+        if controls:
+            raise ValueError("Interaction rotation does not accept controls.")
+        angle = params.get("angle")
+        if isinstance(angle, bool) or not isinstance(angle, (int, float)):
+            raise ValueError("Interaction rotation requires a finite real angle.")
+        try:
+            finite = math.isfinite(float(angle))
+        except (OverflowError, ValueError) as exc:
+            raise ValueError("Interaction rotation requires a finite real angle.") from exc
+        if not finite:
+            raise ValueError("Interaction rotation requires a finite real angle.")
+
+    # Reject lossy wire coercion and accidental controlled single-qubit gates.
+    wires = list(controls) + list(targets)
+    if any(type(q) is not int or q < 0 for q in wires) or len(set(wires)) != len(wires):
+        raise ValueError('Wires must be distinct non-negative integers')
+    if gate_name not in NOOP_GATES and not targets:
+        raise ValueError('Gate requires targets')
+    if gate_name in SINGLE_QUBIT_GATES or gate_name in ROTATION_GATES or gate_name in {'MEASURE', 'U1Q'}:
+        if controls:
+            raise ValueError('Gate does not accept controls')
+    if gate_name == 'U1Q' and len(targets) != 1:
+        raise ValueError('U1Q requires exactly one target')
+    if gate_name in TWO_QUBIT_GATES:
+        canonical_swap = gate_name in {'SWAP', 'ISWAP'} and len(targets) == 2 and not controls
+        if not canonical_swap and (len(controls) != 1 or len(targets) != 1):
+            raise ValueError('Two-qubit gate requires exactly two wires')
+    if gate_name in {'CCX', 'CCNOT', 'TOFFOLI'} and (len(controls) != 2 or len(targets) != 1):
+        raise ValueError('Toffoli requires two controls and one target')
 
     # --- parameter shapes ----------------------------------------------------
     if gate_name in ROTATION_GATES or gate_name in TWO_QUBIT_ROTATION_GATES:
@@ -708,6 +764,8 @@ def _validate_descriptor(op: Descriptor) -> None:
                 f"Descriptor param 'angle' for gate '{gate_name}' must be a "
                 f"number, got {type(angle_val).__name__!r}."
             )
+        if isinstance(angle_val, bool) or not math.isfinite(angle_val):
+            raise ValueError('Rotation angle must be finite and not boolean')
 
     if gate_name == "U1Q":
         for key in ("w", "x", "y", "z"):

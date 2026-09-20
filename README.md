@@ -842,3 +842,33 @@ Future improvements may include:
 Apache License 2.0
 
 Copyright (c) RQM Technologies
+
+## Interaction rotation descriptor safety
+
+Canonical descriptors `rxx`, `ryy`, and `rzz` map to Braket `xx`, `yy`, and
+`zz` without implementing gate mathematics here. They require exactly two
+distinct non-negative integer targets, no controls, and a finite real
+`params.angle`. Booleans, strings, fractional wires, NaN and infinity are
+rejected before SDK dispatch; malformed fields are never silently coerced.
+This describes canonical descriptors, not an extension of the legacy
+single-target `RQMGate` interface. Hardware target availability and authorization
+remain separate from translation support.
+# Candidate Braket hardware qualification
+
+The local candidate bridge is the API's canonical descriptor translator.
+It accepts compiler-lowered named gates, including inverse/phase aliases,
+canonical two-target SWAP/iSWAP and terminal measurements. Invalid wire values,
+controlled single-qubit descriptors, nonfinite angles, repeated measurements,
+and operations after terminal measurements fail closed. Raw U1Q remains
+local-simulator-only; hardware lowering belongs to the compiler.
+
+`run_device`, `run_device_async`, `get_task_status` and `get_task_result` accept
+an optional keyword-only `aws_session`; omission preserves the default SDK
+credential behavior. Retrieval reconstructs a task from its ARN. The result
+wrapper exposes `measured_qubits` in count-bit order, without rearranging counts.
+These helpers do not authorize spending or retry failed submissions; callers
+must enforce durable submission intent and account-specific budget controls.
+
+This candidate has not been published. API qualification must install this
+exact local bridge revision; public version 0.2.2 alone does not identify these
+changes. No hardware execution is implied by local tests.

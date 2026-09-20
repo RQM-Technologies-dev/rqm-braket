@@ -102,6 +102,8 @@ def run_device(
     device_arn: str,
     s3_folder: Tuple[str, str],
     shots: int = 100,
+    *,
+    aws_session: Any = None,
     **kwargs: Any,
 ) -> BraketResult:
     """Execute on a remote AWS Braket device (synchronous).
@@ -154,7 +156,7 @@ def run_device(
 
     circuit = _resolve_circuit(program_or_circuit)
     try:
-        device = AwsDevice(device_arn)
+        device = AwsDevice(device_arn, **({'aws_session': aws_session} if aws_session is not None else {}))
         task = device.run(circuit, s3_folder, shots=shots, **kwargs)
         return BraketResult(task.result())
     except Exception as exc:
@@ -173,6 +175,8 @@ def run_device_async(
     device_arn: str,
     s3_folder: Tuple[str, str],
     shots: int = 100,
+    *,
+    aws_session: Any = None,
     **kwargs: Any,
 ) -> str:
     """Submit a circuit to a remote AWS Braket device and return the task ARN.
@@ -227,7 +231,7 @@ def run_device_async(
 
     circuit = _resolve_circuit(program_or_circuit)
     try:
-        device = AwsDevice(device_arn)
+        device = AwsDevice(device_arn, **({'aws_session': aws_session} if aws_session is not None else {}))
         task = device.run(circuit, s3_folder, shots=shots, **kwargs)
         return task.id
     except Exception as exc:
@@ -236,7 +240,7 @@ def run_device_async(
         ) from exc
 
 
-def get_task_status(task_arn: str) -> str:
+def get_task_status(task_arn: str, *, aws_session: Any = None) -> str:
     """Return the current status of an AWS Braket task.
 
     Queries the Braket service for the live state of the task identified by
@@ -269,7 +273,7 @@ def get_task_status(task_arn: str) -> str:
     from braket.aws import AwsQuantumTask  # imported lazily to allow offline use
 
     try:
-        task = AwsQuantumTask(task_arn)
+        task = AwsQuantumTask(task_arn, **({'aws_session': aws_session} if aws_session is not None else {}))
         return task.state()
     except Exception as exc:
         raise BraketDeviceError(
@@ -277,7 +281,7 @@ def get_task_status(task_arn: str) -> str:
         ) from exc
 
 
-def get_task_result(task_arn: str) -> BraketResult:
+def get_task_result(task_arn: str, *, aws_session: Any = None) -> BraketResult:
     """Retrieve the result of a completed AWS Braket task.
 
     Blocks until the task is complete if it has not yet finished.  Use
@@ -310,7 +314,7 @@ def get_task_result(task_arn: str) -> BraketResult:
     from braket.aws import AwsQuantumTask  # imported lazily to allow offline use
 
     try:
-        task = AwsQuantumTask(task_arn)
+        task = AwsQuantumTask(task_arn, **({'aws_session': aws_session} if aws_session is not None else {}))
         return BraketResult(task.result())
     except Exception as exc:
         raise BraketDeviceError(

@@ -134,6 +134,15 @@ Examples should **import from `rqm-core` when needed**.
 
 ## Testing Guidelines
 
+Preserve terminal measurement order. Hardware descriptor translation must
+reject operations after measurements and must not discard malformed controls.
+Session injection belongs on AWS device/task constructors, not circuit run
+parameters. Retrieval must work from an ARN without a process-local job map.
+
+Canonical RXX/RYY/RZZ descriptor tests must cover two distinct non-negative
+integer targets, empty controls, finite real angles, and rejection before SDK
+dispatch. Do not coerce malformed wires or booleans into valid gate arguments.
+
 Tests must:
 
 - verify imports
