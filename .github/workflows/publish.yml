@@ -32,6 +32,11 @@ jobs:
         with:
           python-version: "3.12"
 
+      # Keep release validation aligned with ci.yml: the existing compiler
+      # compatibility tests import this pinned candidate on Python 3.11+.
+      - name: Install compiler compatibility dependency
+        run: python -m pip install "rqm-compiler @ git+https://github.com/RQM-Technologies-dev/rqm-compiler.git@55faa4e654f2a935255e174fe5722cd9396ac6f2"
+
       - run: python -m pip install -e ".[dev]"
       - run: pytest
 
