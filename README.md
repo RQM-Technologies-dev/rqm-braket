@@ -872,3 +872,31 @@ must enforce durable submission intent and account-specific budget controls.
 This candidate has not been published. API qualification must install this
 exact local bridge revision; public version 0.2.2 alone does not identify these
 changes. No hardware execution is implied by local tests.
+
+### Durable caller contract (capability version 1)
+
+`rqm_braket.DURABLE_SUBMISSION_CONTRACT_VERSION == 1` identifies the explicit
+provider-token contract; a package version alone does not qualify an installation.
+Call `run_device_async(circuit, device_arn, (bucket, prefix), shots,
+aws_session=session, client_token=persisted_token)` with a region-matched session.
+Persist the token and immutable request before calling. The SDK serializer is used,
+but the token is injected at `AwsSession.create_quantum_task`, not passed through
+`AwsDevice.run` kwargs (which the SDK forwards to its task constructor).
+
+The helper makes one submission attempt, never substitutes a simulator, and never
+retries uncertain acceptance. The caller owns durable recovery and must not infer
+nonacceptance from an exception or absent search result. Configure SDK transport
+retry policy deliberately; any such retry must retain the original token.
+`get_task_metadata(arn, aws_session=session)` retrieves fresh provider identity
+metadata after restart. `cancel_task(arn, aws_session=session)` requests cancellation;
+its return is neither final cancellation nor evidence that charges can be refunded.
+Poll and reconcile authoritative billing separately. None of these helpers creates
+customer authorization, a quote, a credit reservation, or a financial receipt.
+
+For recovery, persist `serialize_circuit_action(circuit)` (or its SHA-256), then
+pass the frozen action as `expected_action` and immutable correlation `tags`.
+The adapter rejects action drift before the provider call. It also rejects ambient
+Braket job/reservation settings that could change the authorized request. Braket
+metadata may omit the native action/client token; correlation tags alone cannot
+prove program equality or establish a final billing charge. Unverifiable identity
+must stay quarantined without resubmission.

@@ -219,3 +219,9 @@ That code belongs in:
 ```
 rqm-core
 ```
+
+Durable submission contract version 1 requires an explicit region-matched session
+and persisted `client_token`. Test the actual SDK serialization boundary: arbitrary
+`AwsDevice.run` kwargs do not become CreateQuantumTask request fields. Never retry
+an ambiguous accepted submission, mutate a shared session, or equate cancellation
+request acceptance with a refund. Metadata retrieval uses the persisted task ARN.

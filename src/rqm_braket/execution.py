@@ -24,6 +24,8 @@ local simulator and offline tests remain credential-free.
 
 from __future__ import annotations
 
+import os
+
 from typing import Any, Literal, Tuple
 
 from braket.circuits import Circuit
@@ -44,6 +46,45 @@ class BraketDeviceError(RuntimeError):
     Wraps low-level AWS / Braket SDK exceptions with a friendlier message
     that includes context (e.g., device ARN or task ID).
     """
+
+
+# Capability checked by durable callers before any provider action. This is not
+# a package version: older 0.2.3 candidates do not implement this contract.
+DURABLE_SUBMISSION_CONTRACT_VERSION = 1
+
+
+class _SubmissionSession:
+    """Per-call SDK session view; never mutate a shared session or retry a create."""
+
+    def __init__(self, session: Any, client_token: str, expected_action: str) -> None:
+        self._session = session
+        self._client_token = client_token
+        self._expected_action = expected_action
+        self._attempted = False
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._session, name)
+
+    def create_quantum_task(self, **kwargs: Any) -> str:
+        if self._attempted:
+            raise BraketDeviceError("A submission session cannot create another task")
+        if kwargs.get("action") != self._expected_action:
+            raise BraketDeviceError("SDK action differs from frozen circuit serialization")
+        self._attempted = True
+        kwargs["clientToken"] = self._client_token
+        return self._session.create_quantum_task(**kwargs)
+
+
+def serialize_circuit_action(program_or_circuit: Circuit | Any) -> str:
+    """Return the exact default OpenQASM action JSON without provider access.
+
+    Durable submission checks this action again at dispatch. Persist its hash
+    with the request for explicit-ARN recovery; metadata tags alone are not proof.
+    """
+    from braket.circuits.serialization import IRType
+    circuit = _resolve_circuit(program_or_circuit)
+    return circuit.to_ir(ir_type=IRType.OPENQASM,
+                         serialization_properties=None, gate_definitions={}).json()
 
 
 # ---------------------------------------------------------------------------
@@ -177,9 +218,18 @@ def run_device_async(
     shots: int = 100,
     *,
     aws_session: Any = None,
+    client_token: str | None = None,
+    tags: dict[str, str] | None = None,
+    expected_action: str | None = None,
     **kwargs: Any,
 ) -> str:
     """Submit a circuit to a remote AWS Braket device and return the task ARN.
+
+    ``client_token`` opts into durable submission: callers must persist it
+    before calling, supply a region-matched session, and treat any submission
+    exception as potentially accepted. This helper never retries or searches
+    for a replacement task. SDK transport retries, if enabled by the caller,
+    must reuse this exact token. No simulator fallback is performed.
 
     Unlike :func:`run_device`, this function does **not** block until the
     task completes.  It returns the task ARN immediately so that the caller
@@ -229,8 +279,53 @@ def run_device_async(
     """
     from braket.aws import AwsDevice  # imported lazily to allow offline use
 
+    # SDK **kwargs are task-constructor options, not CreateQuantumTask fields.
+    # Reject the tempting camel-case spelling before it can cause an uncertain
+    # accepted submission followed by a constructor TypeError.
+    if "clientToken" in kwargs:
+        raise ValueError("Use client_token, not clientToken")
+    if client_token is not None:
+        if any(os.environ.get(name) for name in (
+            "AMZN_BRAKET_JOB_TOKEN", "AMZN_BRAKET_RESERVATION_DEVICE_ARN",
+            "AMZN_BRAKET_RESERVATION_TIME_WINDOW_ARN",
+        )):
+            raise ValueError("Durable submission rejects ambient job/reservation context")
+        if (not isinstance(client_token, str) or not client_token
+                or len(client_token) > 64 or not all(
+                    c.isascii() and (c.isalnum() or c in "_-")
+                    for c in client_token)):
+            raise ValueError("client_token must contain 1..64 ASCII letters, digits, '_' or '-'")
+        if aws_session is None:
+            raise ValueError("Durable submission requires an explicit aws_session")
+        if tags is not None and (not isinstance(tags, dict) or len(tags) > 50
+                or any(not isinstance(k, str) or not 1 <= len(k) <= 128
+                       or not isinstance(v, str) or len(v) > 256
+                       for k, v in tags.items())):
+            raise ValueError("tags must be a bounded string mapping")
+        if kwargs:
+            raise ValueError("Durable submission does not accept additional SDK options")
+        if type(shots) is not int or shots <= 0:
+            raise ValueError("Durable submission requires positive integer shots")
+        region = device_arn.split(":")[3] if isinstance(device_arn, str) and device_arn.count(":") >= 5 else None
+        if not region or aws_session.region != region:
+            raise ValueError("Explicit session region must match the device ARN")
     circuit = _resolve_circuit(program_or_circuit)
     try:
+        if client_token is not None:
+            from braket.aws import AwsQuantumTask
+            # create() serializes the circuit with the actual SDK. Its kwargs
+            # are not used for the provider token; the session boundary is.
+            task = AwsQuantumTask.create(
+                _SubmissionSession(aws_session, client_token,
+                                   expected_action if expected_action is not None
+                                   else serialize_circuit_action(circuit)), device_arn,
+                circuit, s3_folder, shots, tags=dict(tags) if tags is not None else None,
+            )
+            return task.id
+        if expected_action is not None:
+            raise ValueError("expected_action requires durable client_token")
+        if tags is not None:
+            kwargs["tags"] = tags
         device = AwsDevice(device_arn, **({'aws_session': aws_session} if aws_session is not None else {}))
         task = device.run(circuit, s3_folder, shots=shots, **kwargs)
         return task.id
@@ -320,6 +415,34 @@ def get_task_result(task_arn: str, *, aws_session: Any = None) -> BraketResult:
         raise BraketDeviceError(
             f"Failed to retrieve result for task '{task_arn}': {exc}"
         ) from exc
+
+
+def get_task_metadata(task_arn: str, *, aws_session: Any = None) -> dict[str, Any]:
+    """Fetch fresh provider metadata by ARN for durable identity verification.
+
+    Metadata is provider evidence, not a billing receipt. Braket does not
+    guarantee that it returns the submission client token in task metadata.
+    """
+    from braket.aws import AwsQuantumTask
+    try:
+        task = AwsQuantumTask(task_arn, **({'aws_session': aws_session} if aws_session is not None else {}))
+        return task.metadata(use_cached_value=False)
+    except Exception as exc:
+        raise BraketDeviceError("Failed to retrieve task metadata") from exc
+
+
+def cancel_task(task_arn: str, *, aws_session: Any = None) -> None:
+    """Request cancellation by persisted ARN; this does not prove cancellation.
+
+    Poll the provider afterward. Acceptance, execution and charges can race
+    cancellation, so callers must not release funds from this return alone.
+    """
+    from braket.aws import AwsQuantumTask
+    try:
+        task = AwsQuantumTask(task_arn, **({'aws_session': aws_session} if aws_session is not None else {}))
+        task.cancel()
+    except Exception as exc:
+        raise BraketDeviceError("Failed to request task cancellation") from exc
 
 
 # ---------------------------------------------------------------------------
