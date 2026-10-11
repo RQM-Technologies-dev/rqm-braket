@@ -143,6 +143,11 @@ Canonical RXX/RYY/RZZ descriptor tests must cover two distinct non-negative
 integer targets, empty controls, finite real angles, and rejection before SDK
 dispatch. Do not coerce malformed wires or booleans into valid gate arguments.
 
+Native XY/PSWAP use two targets and no controls. Controlled-phase variants use
+one control and one target; CSWAP uses one control and two targets. Preserve SDK
+control-state semantics and reject malformed descriptors before constructing the
+SDK circuit. Translation support is not physical qualification or admission.
+
 Tests must:
 
 - verify imports
