@@ -230,3 +230,11 @@ and persisted `client_token`. Test the actual SDK serialization boundary: arbitr
 `AwsDevice.run` kwargs do not become CreateQuantumTask request fields. Never retry
 an ambiguous accepted submission, mutate a shared session, or equate cancellation
 request acceptance with a refund. Metadata retrieval uses the persisted task ARN.
+
+
+Native workload exports in `workloads.py` are offline codecs only. Preserve raw
+dynamic control and intermediate measurements, pulse calibration identifiers and
+analog Hamiltonians. Never imply that SDK schema validation establishes device
+compatibility or physical qualification. Keep exports unqualified until a separate
+hosting layer verifies device-specific validation, results, permissions and billing.
+Do not send these exports through the terminal gate-circuit run helpers.

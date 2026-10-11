@@ -4,13 +4,15 @@ from typing import Any
 from rqm_core import Quaternion
 from rqm_braket.backend import BraketBackend
 from rqm_braket.execution import serialize_circuit_action, DURABLE_SUBMISSION_CONTRACT_VERSION, cancel_task, get_task_metadata, BraketDeviceError, get_task_result, get_task_status, list_devices, run_descriptors, run_device, run_device_async, run_local
+from rqm_braket.workloads import NativeWorkload, WorkloadFamily, decode_native_workload, export_native_workload
 from rqm_braket.results import BraketResult
+from rqm_braket.ahs_results import normalize_ahs_result
 from rqm_braket.translator import BraketTranslator, RQMGate, compile_to_braket_circuit, to_backend_circuit
 from rqm_braket.translators import bloch_to_circuit, spinor_to_circuit
 from rqm_braket.relational import lower_relational_descriptors
 from rqm_braket.translators import to_braket_circuit  # noqa: F401
 
-__all__ = ["serialize_circuit_action", "DURABLE_SUBMISSION_CONTRACT_VERSION", "cancel_task", "get_task_metadata", "api_blueprint", "BraketBackend", "BraketTranslator", "RQMGate", "compile_to_braket_circuit", "to_backend_circuit", "lower_relational_descriptors", "run_local", "run_device", "run_device_async", "get_task_status", "get_task_result", "list_devices", "run_descriptors", "BraketResult", "BraketDeviceError", "Quaternion", "spinor_to_circuit", "bloch_to_circuit"]
+__all__ = ["normalize_ahs_result", "NativeWorkload", "WorkloadFamily", "decode_native_workload", "export_native_workload", "serialize_circuit_action", "DURABLE_SUBMISSION_CONTRACT_VERSION", "cancel_task", "get_task_metadata", "api_blueprint", "BraketBackend", "BraketTranslator", "RQMGate", "compile_to_braket_circuit", "to_backend_circuit", "lower_relational_descriptors", "run_local", "run_device", "run_device_async", "get_task_status", "get_task_result", "list_devices", "run_descriptors", "BraketResult", "BraketDeviceError", "Quaternion", "spinor_to_circuit", "bloch_to_circuit"]
 
 def __getattr__(name: str) -> Any:
     if name == "api_blueprint":
