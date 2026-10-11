@@ -910,3 +910,35 @@ Braket job/reservation settings that could change the authorized request. Braket
 metadata may omit the native action/client token; correlation tags alone cannot
 prove program equality or establish a final billing charge. Unverifiable identity
 must stay quarantined without resubmission.
+
+
+### Versioned native workload exports (preparation only)
+
+`export_native_workload(program, family=...)` preserves SDK gate circuits,
+`PulseSequence` programs, analog Hamiltonian simulations and raw dynamic OpenQASM
+as separate `rqm.braket.native-workload.v1` exports. The explicit family must match
+the SDK object. Gate/pulse parameters must be bound; decoding checks action and
+family bindings and the native SDK schema. It never submits or discretizes a
+program, rewrites control flow, or converts intermediate measurements to terminal
+readout. Use `decode_native_workload` to recover the native IR object.
+
+These are **serialization adapters, not executable workload qualifications**.
+Every export reports `hardware_qualified=False` and lists pending device checks.
+Pulse frames/calibrations/waveforms, AHS lattice/Hamiltonian/time-series limits,
+and dynamic classical control/result registers require separate device validators
+and result adapters. Physical US location, capability snapshots, shots, permissions,
+pricing and Account Core accounting must be bound by the hosting execution layer.
+The existing gate-only durable submission helpers do not accept these exports.
+No package release or source-level test enables them through the hosted connector.
+
+The byte binding is SHA-256 over UTF-8 `schema_version + "\n" + family + "\n" + action`.
+The action is kept as an immutable string; its numbers are not reserialized for
+hashing. A fresh export and quote are required when the native bytes change.
+
+AWS defines separate [OpenQASM/pulse capabilities](https://docs.aws.amazon.com/braket/latest/developerguide/braket-openqasm-device-support.html)
+and an [AHS execution model](https://docs.aws.amazon.com/braket/latest/developerguide/braket-get-started-hello-ahs.html).
+
+`normalize_ahs_result` checks the expected task, device, shot count and register
+size before returning AHS measurements in submitted register order. It preserves
+partial and failed shots alongside successful `e/r/g` state counts. It does not
+retry missing shots, infer refunds, establish billing, or qualify a device.
