@@ -83,7 +83,18 @@ ROTATION_GATES: dict[str, str] = {
 
 #: Maps a canonical two-qubit gate name to the Braket method name.
 #: Each entry expects ``(control, target)`` qubits.
-TWO_QUBIT_ROTATION_GATES: dict[str, str] = {"RXX": "xx", "RYY": "yy", "RZZ": "zz"}
+TWO_QUBIT_ROTATION_GATES: dict[str, str] = {
+    "RXX": "xx", "RYY": "yy", "RZZ": "zz", "XY": "xy", "PSWAP": "pswap",
+}
+
+# Controlled phase variants preserve the SDK's control-state semantics. They
+# require one control and one target; interaction rotations use two targets.
+CONTROLLED_PHASE_GATES: dict[str, str] = {
+    "CPHASESHIFT": "cphaseshift",
+    "CPHASESHIFT00": "cphaseshift00",
+    "CPHASESHIFT01": "cphaseshift01",
+    "CPHASESHIFT10": "cphaseshift10",
+}
 
 TWO_QUBIT_GATES: dict[str, str] = {
     "CNOT": "cnot",
@@ -433,6 +444,14 @@ class BraketTranslator:
             wires = controls + targets
             getattr(circuit, TWO_QUBIT_GATES[gate_name])(*wires)
 
+        elif gate_name in CONTROLLED_PHASE_GATES:
+            getattr(circuit, CONTROLLED_PHASE_GATES[gate_name])(
+                *controls, *targets, float(params["angle"])
+            )
+
+        elif gate_name == "CSWAP":
+            circuit.cswap(*controls, *targets)
+
         elif gate_name in {"CCX", "CCNOT", "TOFFOLI"}:
             circuit.ccnot(*controls, *targets)
 
@@ -510,7 +529,7 @@ class BraketTranslator:
         braket.circuits.Circuit
             The resulting Braket circuit.
         """
-        circuit = circuit_factory()
+        descriptors = list(descriptors)
         measuring = False
         measured = set()
         for op in descriptors:
@@ -523,6 +542,8 @@ class BraketTranslator:
                 measuring = True
             elif measuring and gate not in NOOP_GATES:
                 raise ValueError('Only terminal measurements are supported')
+        circuit = circuit_factory()
+        for op in descriptors:
             self._apply_descriptor(circuit, op)
         return circuit
 
@@ -706,8 +727,9 @@ def _validate_descriptor(op: Descriptor) -> None:
         | set(ROTATION_GATES)
         | set(TWO_QUBIT_GATES)
         | set(TWO_QUBIT_ROTATION_GATES)
+        | set(CONTROLLED_PHASE_GATES)
         | NOOP_GATES
-        | {"MEASURE", "U1Q", "CCX", "CCNOT", "TOFFOLI"}
+        | {"MEASURE", "U1Q", "CCX", "CCNOT", "TOFFOLI", "CSWAP"}
     )
     if gate_name not in _ALL_KNOWN_GATES:
         raise ValueError(
@@ -750,9 +772,19 @@ def _validate_descriptor(op: Descriptor) -> None:
             raise ValueError('Two-qubit gate requires exactly two wires')
     if gate_name in {'CCX', 'CCNOT', 'TOFFOLI'} and (len(controls) != 2 or len(targets) != 1):
         raise ValueError('Toffoli requires two controls and one target')
+    if gate_name == 'CSWAP' and (len(controls) != 1 or len(targets) != 2):
+        raise ValueError('CSWAP requires one control and two targets')
+    if gate_name in CONTROLLED_PHASE_GATES and (len(controls) != 1 or len(targets) != 1):
+        raise ValueError('Controlled phase requires one control and one target')
+    if gate_name in CONTROLLED_PHASE_GATES or gate_name in {'XY', 'PSWAP'}:
+        if set(params) != {'angle'}:
+            raise ValueError('Parameterized native gate requires only angle')
+    if gate_name == 'CSWAP' and params:
+        raise ValueError('CSWAP does not accept parameters')
 
     # --- parameter shapes ----------------------------------------------------
-    if gate_name in ROTATION_GATES or gate_name in TWO_QUBIT_ROTATION_GATES:
+    if (gate_name in ROTATION_GATES or gate_name in TWO_QUBIT_ROTATION_GATES
+            or gate_name in CONTROLLED_PHASE_GATES):
         if "angle" not in params:
             raise ValueError(
                 f"Descriptor for rotation gate '{gate_name}' requires "

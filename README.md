@@ -1,5 +1,15 @@
 # rqm-braket
 
+### Additional native gate descriptors
+
+Descriptor translation supports `XY` and `PSWAP` with two distinct targets, no
+controls, and a finite real `angle`; `CPHASESHIFT`, `CPHASESHIFT00`,
+`CPHASESHIFT01`, and `CPHASESHIFT10` require one control, one target, and `angle`.
+`CSWAP` requires one control and two targets with no parameters. Control-state
+semantics and wire ordering are delegated directly to the Braket SDK. These
+mappings do not imply device availability or physical qualification: callers must
+validate live capabilities and use approved execution and accounting policies.
+
 [![PyPI version](https://img.shields.io/pypi/v/rqm-braket.svg)](https://pypi.org/project/rqm-braket/)
 [![Python versions](https://img.shields.io/pypi/pyversions/rqm-braket.svg)](https://pypi.org/project/rqm-braket/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
