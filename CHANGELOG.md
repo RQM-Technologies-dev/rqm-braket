@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.0](https://github.com/RQM-Technologies-dev/rqm-braket/compare/v0.3.0...v0.4.0) (2026-10-18)
+
+
+### Features
+
+* expose additional native Braket gate descriptors ([#24](https://github.com/RQM-Technologies-dev/rqm-braket/issues/24)) ([202e16b](https://github.com/RQM-Technologies-dev/rqm-braket/commit/202e16b6150437d886c737d42c532eae3cebdde3))
+* preserve native Braket workloads and AHS shot results ([#26](https://github.com/RQM-Technologies-dev/rqm-braket/issues/26)) ([730a817](https://github.com/RQM-Technologies-dev/rqm-braket/commit/730a81710c45d57539a1cc578a2ad839e88de45e))
+
+
+### Bug Fixes
+
+* use IQM device parameters for durable Garnet requests ([#27](https://github.com/RQM-Technologies-dev/rqm-braket/issues/27)) ([308103c](https://github.com/RQM-Technologies-dev/rqm-braket/commit/308103c1aea95b819c0c1d26a7b5d8204688ea14))
+
 ## [0.3.0](https://github.com/RQM-Technologies-dev/rqm-braket/compare/v0.2.2...v0.3.0) (2026-10-08)
 
 
