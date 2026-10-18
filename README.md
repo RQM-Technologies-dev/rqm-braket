@@ -5,6 +5,10 @@ with virtual qubit addressing and rewiring enabled. Their separate version-1
 device-parameter markers describe SDK request routing only; hosting-layer device
 qualification, approval and billing remain required before QPU execution.
 
+`rqm_braket.execution.IQM_EMERALD_DEVICE_PARAMETERS_CONTRACT_VERSION: Final[int]`
+is `1` for that exact Emerald SDK request contract. Callers must check it before
+durable submission; it is independent of the package version and Garnet marker.
+
 ### Additional native gate descriptors
 
 Descriptor translation supports `XY` and `PSWAP` with two distinct targets, no
