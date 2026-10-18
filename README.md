@@ -942,3 +942,10 @@ and an [AHS execution model](https://docs.aws.amazon.com/braket/latest/developer
 size before returning AHS measurements in submitted register order. It preserves
 partial and failed shots alongside successful `e/r/g` state counts. It does not
 retry missing shots, infer refunds, establish billing, or qualify a device.
+
+Durable submissions to the exact IQM Garnet ARN explicitly use
+`IqmDeviceParameters` with logical qubit addressing and provider rewiring enabled.
+The bridge advertises `IQM_GARNET_DEVICE_PARAMETERS_CONTRACT_VERSION = 1` in
+`rqm_braket.execution` for caller preflight. This avoids the SDK's simulator
+parameter fallback for IQM; it does not qualify a device, enable execution, or
+change the durable token, frozen action, or saved-ARN recovery contracts.

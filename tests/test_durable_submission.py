@@ -137,3 +137,30 @@ def test_bad_tags_rejected_before_submission(tags):
     with pytest.raises(ValueError, match='tags'):
         submit(s, tags=tags)
     s.create_quantum_task.assert_not_called()
+
+
+@pytest.mark.parametrize('device,region,schema', [
+    (DEVICE, 'us-west-1', 'braket.device_schema.rigetti.rigetti_device_parameters'),
+    ('arn:aws:braket:us-east-1::device/qpu/ionq/Forte-1', 'us-east-1',
+     'braket.device_schema.ionq.ionq_device_parameters'),
+    ('arn:aws:braket:eu-north-1::device/qpu/iqm/Garnet', 'eu-north-1',
+     'braket.device_schema.iqm.iqm_device_parameters'),
+])
+def test_exact_qpu_parameter_schemas_preserve_virtual_action_and_durable_token(device, region, schema):
+    import json
+    from rqm_braket.execution import serialize_circuit_action
+
+    circuit = Circuit().h(0).cnot(0, 1).measure([1, 0])
+    task = f'arn:aws:braket:{region}:123456789012:quantum-task/offline'
+    s = SimpleNamespace(region=region, create_quantum_task=Mock(return_value=task))
+    frozen = serialize_circuit_action(circuit)
+    assert run_device_async(circuit, device, ('bucket', 'saved/prefix'), 100,
+        aws_session=s, client_token='persisted-token', expected_action=frozen) == task
+    request = s.create_quantum_task.call_args.kwargs
+    parameters = json.loads(request['deviceParameters'])
+    assert parameters['braketSchemaHeader']['name'] == schema
+    assert parameters['paradigmParameters']['disableQubitRewiring'] is False
+    assert parameters['paradigmParameters']['qubitCount'] == 2
+    assert request['action'] == frozen and '$' not in request['action']
+    assert request['clientToken'] == 'persisted-token'
+    s.create_quantum_task.assert_called_once()
