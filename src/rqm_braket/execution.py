@@ -51,6 +51,8 @@ class BraketDeviceError(RuntimeError):
 # Capability checked by durable callers before any provider action. This is not
 # a package version: older 0.2.3 candidates do not implement this contract.
 DURABLE_SUBMISSION_CONTRACT_VERSION = 1
+IQM_GARNET_DEVICE_PARAMETERS_CONTRACT_VERSION = 1
+_GARNET = "arn:aws:braket:eu-north-1::device/qpu/iqm/Garnet"
 
 
 class _SubmissionSession:
@@ -315,11 +317,25 @@ def run_device_async(
             from braket.aws import AwsQuantumTask
             # create() serializes the circuit with the actual SDK. Its kwargs
             # are not used for the provider token; the session boundary is.
+            device_options = {}
+            if device_arn == _GARNET:
+                # SDK dict inference currently falls back to simulator parameters
+                # for IQM. Supply the capability-advertised schema explicitly;
+                # logical OpenQASM and provider-side rewiring remain unchanged.
+                from braket.device_schema import GateModelParameters
+                from braket.device_schema.iqm import IqmDeviceParameters
+
+                device_options["device_parameters"] = IqmDeviceParameters(
+                    paradigmParameters=GateModelParameters(
+                        qubitCount=circuit.qubit_count, disableQubitRewiring=False,
+                    ),
+                )
             task = AwsQuantumTask.create(
                 _SubmissionSession(aws_session, client_token,
                                    expected_action if expected_action is not None
                                    else serialize_circuit_action(circuit)), device_arn,
                 circuit, s3_folder, shots, tags=dict(tags) if tags is not None else None,
+                **device_options,
             )
             return task.id
         if expected_action is not None:
