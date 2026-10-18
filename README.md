@@ -1,5 +1,10 @@
 # rqm-braket
 
+IQM Emerald and IQM Garnet durable requests use explicit `IqmDeviceParameters`
+with virtual qubit addressing and rewiring enabled. Their separate version-1
+device-parameter markers describe SDK request routing only; hosting-layer device
+qualification, approval and billing remain required before QPU execution.
+
 ### Additional native gate descriptors
 
 Descriptor translation supports `XY` and `PSWAP` with two distinct targets, no

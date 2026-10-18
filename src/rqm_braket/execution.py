@@ -52,7 +52,9 @@ class BraketDeviceError(RuntimeError):
 # a package version: older 0.2.3 candidates do not implement this contract.
 DURABLE_SUBMISSION_CONTRACT_VERSION = 1
 IQM_GARNET_DEVICE_PARAMETERS_CONTRACT_VERSION = 1
+IQM_EMERALD_DEVICE_PARAMETERS_CONTRACT_VERSION = 1
 _GARNET = "arn:aws:braket:eu-north-1::device/qpu/iqm/Garnet"
+_EMERALD = "arn:aws:braket:eu-north-1::device/qpu/iqm/Emerald"
 
 
 class _SubmissionSession:
@@ -318,7 +320,7 @@ def run_device_async(
             # create() serializes the circuit with the actual SDK. Its kwargs
             # are not used for the provider token; the session boundary is.
             device_options = {}
-            if device_arn == _GARNET:
+            if device_arn in {_GARNET, _EMERALD}:
                 # SDK dict inference currently falls back to simulator parameters
                 # for IQM. Supply the capability-advertised schema explicitly;
                 # logical OpenQASM and provider-side rewiring remain unchanged.
