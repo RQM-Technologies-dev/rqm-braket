@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/RQM-Technologies-dev/rqm-braket/compare/v0.5.0...v0.6.0) (2026-10-19)
+
+
+### Features
+
+* add inactive AQT Ibex adapter contracts ([#30](https://github.com/RQM-Technologies-dev/rqm-braket/issues/30)) ([b96db37](https://github.com/RQM-Technologies-dev/rqm-braket/commit/b96db379c88ec10e4b3f5a31afb6aa1cd204cd60))
+
 ## [0.5.0](https://github.com/RQM-Technologies-dev/rqm-braket/compare/v0.4.0...v0.5.0) (2026-10-19)
 
 
