@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/RQM-Technologies-dev/rqm-braket/compare/v0.4.0...v0.5.0) (2026-10-19)
+
+
+### Features
+
+* route IQM Emerald through explicit IQM device parameters [skip render] [skip vercel] ([2ddc551](https://github.com/RQM-Technologies-dev/rqm-braket/commit/2ddc5516a214f0fa28e4719bae59b469d7678cd4))
+
 ## [0.4.0](https://github.com/RQM-Technologies-dev/rqm-braket/compare/v0.3.0...v0.4.0) (2026-10-18)
 
 
