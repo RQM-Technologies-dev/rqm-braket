@@ -84,7 +84,7 @@ ROTATION_GATES: dict[str, str] = {
 #: Maps a canonical two-qubit gate name to the Braket method name.
 #: Each entry expects ``(control, target)`` qubits.
 TWO_QUBIT_ROTATION_GATES: dict[str, str] = {
-    "RXX": "xx", "RYY": "yy", "RZZ": "zz", "XY": "xy", "PSWAP": "pswap",
+    "XX": "xx", "RXX": "xx", "RYY": "yy", "RZZ": "zz", "XY": "xy", "PSWAP": "pswap",
 }
 
 # Controlled phase variants preserve the SDK's control-state semantics. They
@@ -423,6 +423,9 @@ class BraketTranslator:
             for t in targets:
                 getattr(circuit, SINGLE_QUBIT_GATES[gate_name])(t)
 
+        elif gate_name == "PRX":
+            circuit.prx(targets[0], float(params["angle"]), float(params["phase"]))
+
         elif gate_name in ROTATION_GATES:
             angle = params.get("angle")
             if angle is None:
@@ -729,13 +732,24 @@ def _validate_descriptor(op: Descriptor) -> None:
         | set(TWO_QUBIT_ROTATION_GATES)
         | set(CONTROLLED_PHASE_GATES)
         | NOOP_GATES
-        | {"MEASURE", "U1Q", "CCX", "CCNOT", "TOFFOLI", "CSWAP"}
+        | {"MEASURE", "U1Q", "CCX", "CCNOT", "TOFFOLI", "CSWAP", "PRX"}
     )
     if gate_name not in _ALL_KNOWN_GATES:
         raise ValueError(
             f"Unknown gate '{gate_name}' in descriptor. "
             f"Known gates: {sorted(_ALL_KNOWN_GATES)}."
         )
+
+    if gate_name == "PRX":
+        if len(targets) != 1 or controls or set(params) != {"angle", "phase"}:
+            raise ValueError("PRX requires one target, no controls, and only angle and phase")
+        for value in params.values():
+            try:
+                finite = type(value) in (int, float) and math.isfinite(value)
+            except OverflowError:
+                finite = False
+            if not finite:
+                raise ValueError("PRX angle and phase must be finite real radians")
 
     if gate_name in TWO_QUBIT_ROTATION_GATES:
         # Guard raw descriptors before _apply_descriptor converts wire values.
