@@ -958,3 +958,20 @@ The bridge advertises `IQM_GARNET_DEVICE_PARAMETERS_CONTRACT_VERSION = 1` in
 `rqm_braket.execution` for caller preflight. This avoids the SDK's simulator
 parameter fallback for IQM; it does not qualify a device, enable execution, or
 change the durable token, frozen action, or saved-ARN recovery contracts.
+
+### AQT Ibex-Q1 offline adapter contract
+
+Durable submissions to the exact ARN
+`arn:aws:braket:eu-north-1::device/qpu/aqt/Ibex-Q1` explicitly serialize
+`braket.device_schema.common.gate_model_device_parameters` version 1, with
+virtual wires and rewiring enabled. The marker
+`rqm_braket.execution.AQT_IBEX_DEVICE_PARAMETERS_CONTRACT_VERSION = 1`
+identifies this adapter behavior; it does not establish hardware qualification.
+Native descriptors support `PRX` with exactly `params={"angle": theta,
+"phase": phi}` (finite real radians), one integer target and no controls.
+`XX` aliases the existing two-target `RXX`; `RZ` retains its existing format.
+No gate decomposition or canonical math is performed by these mappings.
+
+The retained 2026-10-18 GetDevice observation advertises 12 qubits and native
+`prx/xx/rz` at Innsbruck, Austria. This local adapter work does not enable a
+customer target, publish a review, change credentials/settings, or submit a task.

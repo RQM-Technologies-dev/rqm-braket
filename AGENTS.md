@@ -243,3 +243,10 @@ IQM Emerald and IQM Garnet durable circuit requests must use the capability-adve
 `IqmDeviceParameters` schema and preserve virtual qubit addressing with rewiring
 enabled. Test actual SDK request parameters offline; the SDK's generic circuit
 parameter inference may silently choose simulator parameters for IQM.
+
+AQT Ibex-Q1 durable submissions must use the exact capability-advertised common
+GateModelDeviceParameters schema, never the SDK's inferred simulator schema.
+PRX descriptors carry finite real `angle` and `phase` values in radians, exactly
+one integer target, and no controls. Validate all descriptors before constructing
+the SDK circuit. XX is an alias for the existing RXX descriptor mapping. Keep
+native codec support separate from customer admission and physical qualification.

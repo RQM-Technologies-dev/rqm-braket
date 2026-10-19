@@ -50,6 +50,8 @@ class BraketDeviceError(RuntimeError):
 
 # Capability checked by durable callers before any provider action. This is not
 # a package version: older 0.2.3 candidates do not implement this contract.
+AQT_IBEX_DEVICE_PARAMETERS_CONTRACT_VERSION: Final[int] = 1
+_IBEX = "arn:aws:braket:eu-north-1::device/qpu/aqt/Ibex-Q1"
 DURABLE_SUBMISSION_CONTRACT_VERSION = 1
 IQM_GARNET_DEVICE_PARAMETERS_CONTRACT_VERSION = 1
 # Version 1 means durable IQM Emerald requests select IqmDeviceParameters with
@@ -330,6 +332,19 @@ def run_device_async(
                 from braket.device_schema.iqm import IqmDeviceParameters
 
                 device_options["device_parameters"] = IqmDeviceParameters(
+                    paradigmParameters=GateModelParameters(
+                        qubitCount=circuit.qubit_count, disableQubitRewiring=False,
+                    ),
+                )
+            if device_arn == _IBEX:
+                # Ibex advertises the common gate-model schema. SDK inference
+                # otherwise silently selects simulator device parameters.
+                from braket.device_schema import GateModelParameters
+                from braket.device_schema.common.gate_model_device_parameters_v1 import (
+                    GateModelDeviceParameters,
+                )
+
+                device_options["device_parameters"] = GateModelDeviceParameters(
                     paradigmParameters=GateModelParameters(
                         qubitCount=circuit.qubit_count, disableQubitRewiring=False,
                     ),
