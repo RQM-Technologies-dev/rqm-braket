@@ -239,7 +239,7 @@ compatibility or physical qualification. Keep exports unqualified until a separa
 hosting layer verifies device-specific validation, results, permissions and billing.
 Do not send these exports through the terminal gate-circuit run helpers.
 
-IQM Garnet durable circuit requests must use the capability-advertised
+IQM Emerald and IQM Garnet durable circuit requests must use the capability-advertised
 `IqmDeviceParameters` schema and preserve virtual qubit addressing with rewiring
 enabled. Test actual SDK request parameters offline; the SDK's generic circuit
 parameter inference may silently choose simulator parameters for IQM.
