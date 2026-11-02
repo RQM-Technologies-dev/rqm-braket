@@ -131,20 +131,6 @@ def _normalise_gate_input(raw: GateInput) -> RQMGate:
     return RQMGate(gate=gate, target=target, control=control, angle=angle)
 
 
-def _require_int(descriptor: GateDescriptor, key: str, gate_name: str) -> int:
-    """Extract a required integer key from a gate descriptor dict."""
-    if key not in descriptor:
-        raise ValueError(f"Gate '{gate_name}' requires a '{key}' key.")
-    return int(descriptor[key])
-
-
-def _require_float(descriptor: GateDescriptor, key: str, gate_name: str) -> float:
-    """Extract a required float key from a gate descriptor dict."""
-    if key not in descriptor:
-        raise ValueError(f"Gate '{gate_name}' requires a '{key}' key.")
-    return float(descriptor[key])
-
-
 # ---------------------------------------------------------------------------
 # rqm-core bridge functions
 # ---------------------------------------------------------------------------
