@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/RQM-Technologies-dev/rqm-braket/compare/v0.6.0...v0.6.1) (2026-11-07)
+
+
+### Bug Fixes
+
+* **deps:** qualify released phase-safe core stack ([#34](https://github.com/RQM-Technologies-dev/rqm-braket/issues/34)) ([4e69327](https://github.com/RQM-Technologies-dev/rqm-braket/commit/4e693273498af9633a09534769f62c909a60ebe0))
+
 ## [0.6.0](https://github.com/RQM-Technologies-dev/rqm-braket/compare/v0.5.0...v0.6.0) (2026-10-19)
 
 
