@@ -12,25 +12,111 @@ on:
 
 permissions: {}
 
+env:
+  PUBLISH_PROJECT: rqm-braket
+
 concurrency:
   group: pypi-${{ inputs.tag_name || github.event.release.tag_name }}
   cancel-in-progress: false
 
 jobs:
+  guard:
+    name: Verify release provenance
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      commit: ${{ steps.identity.outputs.commit }}
+      tag: ${{ steps.identity.outputs.tag }}
+      release-id: ${{ steps.identity.outputs.release-id }}
+    steps:
+      - name: Verify published release identity
+        id: identity
+        uses: actions/github-script@v8
+        with:
+          script: |
+            // Keep this read-only policy identical in guard, publish, and attach.
+            const fail = message => { throw new Error(message); };
+            const {owner, repo} = context.repo;
+            if (owner !== 'RQM-Technologies-dev' || repo !== process.env.PUBLISH_PROJECT) {
+              fail('Unexpected publishing repository');
+            }
+            const event = context.eventName;
+            if (event !== 'workflow_dispatch' && event !== 'release') fail('Unsupported release event');
+            if (event === 'release' && context.payload.action !== 'published') fail('Release is not published');
+            const tag = event === 'workflow_dispatch'
+              ? context.payload.inputs?.tag_name : context.payload.release?.tag_name;
+            if (typeof tag !== 'string' || tag !== tag.trim() || !/^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(tag)) {
+              fail('Expected a stable vMAJOR.MINOR.PATCH tag');
+            }
+            if (process.env.GITHUB_REF_TYPE !== 'tag' || context.ref !== `refs/tags/${tag}`) {
+              fail('Dispatch ref must be the exact requested release tag');
+            }
+            if (process.env.GITHUB_WORKFLOW_REF !== `${owner}/${repo}/.github/workflows/publish.yml@refs/tags/${tag}`
+                || process.env.GITHUB_WORKFLOW_SHA !== context.sha) {
+              fail('Publishing workflow must come from the tagged commit');
+            }
+            if (!/^[0-9a-f]{40}$/.test(context.sha)) fail('Invalid workflow commit');
+            const request = async (route, extra = {}) =>
+              (await github.request(route, {owner, repo, ...extra})).data;
+            const ref = await request('GET /repos/{owner}/{repo}/git/ref/{ref}', {ref: `tags/${tag}`});
+            if (ref.ref !== `refs/tags/${tag}`) fail('Tag ref mismatch');
+            let object = ref.object;
+            for (let depth = 0; object?.type === 'tag' && depth < 8; depth++) {
+              const annotation = await request('GET /repos/{owner}/{repo}/git/tags/{tag_sha}', {tag_sha: object.sha});
+              object = annotation.object;
+            }
+            if (object?.type !== 'commit' || object.sha !== context.sha) {
+              fail('Release tag moved or does not point to the workflow commit');
+            }
+            const release = await request('GET /repos/{owner}/{repo}/releases/tags/{tag}', {tag});
+            if (release.tag_name !== tag || release.draft !== false || release.prerelease !== false
+                || !release.published_at || !Number.isSafeInteger(release.id) || release.id <= 0) {
+              fail('Expected the published, non-draft stable GitHub release');
+            }
+            if (event === 'release' && context.payload.release?.id !== release.id) {
+              fail('Published release was replaced');
+            }
+            if (process.env.EXPECTED_RELEASE_ID && String(release.id) !== process.env.EXPECTED_RELEASE_ID) {
+              fail('Validated release was replaced');
+            }
+            // target_commitish is informational for existing tags; release-please uses a SHA.
+            const main = await request('GET /repos/{owner}/{repo}/branches/{branch}', {branch: 'main'});
+            if (main.name !== 'main' || main.protected !== true || !/^[0-9a-f]{40}$/.test(main.commit?.sha)) {
+              fail('Cannot establish protected main');
+            }
+            const comparison = await request('GET /repos/{owner}/{repo}/compare/{basehead}', {
+              basehead: `${context.sha}...${main.commit.sha}`,
+            });
+            if (!['ahead', 'identical'].includes(comparison.status)
+                || comparison.merge_base_commit?.sha !== context.sha) {
+              fail('Release commit is not in protected main history');
+            }
+            core.setOutput('commit', context.sha);
+            core.setOutput('tag', tag);
+            core.setOutput('release-id', String(release.id));
+
   test:
     name: Validate release
+    needs: guard
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.tag_name || github.event.release.tag_name }}
+          ref: ${{ needs.guard.outputs.commit }}
+          persist-credentials: false
           fetch-depth: 0
 
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+
+      - name: Check source release version
+        env:
+          RELEASE_TAG: ${{ needs.guard.outputs.tag }}
+        run: python .github/scripts/verify_release_artifacts.py
 
       # Qualify the same published stack and installed wheel as ci.yml.
       - name: Build and install release wheel with compatible dependencies
@@ -47,14 +133,15 @@ jobs:
 
   build:
     name: Build and inspect distributions
-    needs: test
+    needs: [guard, test]
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.tag_name || github.event.release.tag_name }}
+          ref: ${{ needs.guard.outputs.commit }}
+          persist-credentials: false
           fetch-depth: 0
 
       - uses: actions/setup-python@v7
@@ -65,29 +152,95 @@ jobs:
       - run: python -m build
       - run: python -m twine check dist/*
 
-      - name: Require release tag to match artifact version
+      - name: Verify source and every distribution against the release
         env:
-          RELEASE_TAG: ${{ inputs.tag_name || github.event.release.tag_name }}
-        run: |
-          expected="${RELEASE_TAG#v}"
-          actual="$(python -c 'import glob, pathlib; print(pathlib.Path(glob.glob("dist/*.whl")[0]).name.split("-")[1])')"
-          test "$actual" = "$expected"
+          RELEASE_TAG: ${{ needs.guard.outputs.tag }}
+        run: python .github/scripts/verify_release_artifacts.py --dist dist
 
       - uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/
+          if-no-files-found: error
 
   publish:
     name: Publish to PyPI
-    needs: [build, attest]
+    needs: [guard, build, attest]
     runs-on: ubuntu-latest
     environment:
       name: pypi
       url: https://pypi.org/p/rqm-braket
     permissions:
+      contents: read
       id-token: write
     steps:
+      - name: Verify published release identity
+        uses: actions/github-script@v8
+        env:
+          EXPECTED_RELEASE_ID: ${{ needs.guard.outputs.release-id }}
+        with:
+          script: |
+            // Keep this read-only policy identical in guard, publish, and attach.
+            const fail = message => { throw new Error(message); };
+            const {owner, repo} = context.repo;
+            if (owner !== 'RQM-Technologies-dev' || repo !== process.env.PUBLISH_PROJECT) {
+              fail('Unexpected publishing repository');
+            }
+            const event = context.eventName;
+            if (event !== 'workflow_dispatch' && event !== 'release') fail('Unsupported release event');
+            if (event === 'release' && context.payload.action !== 'published') fail('Release is not published');
+            const tag = event === 'workflow_dispatch'
+              ? context.payload.inputs?.tag_name : context.payload.release?.tag_name;
+            if (typeof tag !== 'string' || tag !== tag.trim() || !/^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(tag)) {
+              fail('Expected a stable vMAJOR.MINOR.PATCH tag');
+            }
+            if (process.env.GITHUB_REF_TYPE !== 'tag' || context.ref !== `refs/tags/${tag}`) {
+              fail('Dispatch ref must be the exact requested release tag');
+            }
+            if (process.env.GITHUB_WORKFLOW_REF !== `${owner}/${repo}/.github/workflows/publish.yml@refs/tags/${tag}`
+                || process.env.GITHUB_WORKFLOW_SHA !== context.sha) {
+              fail('Publishing workflow must come from the tagged commit');
+            }
+            if (!/^[0-9a-f]{40}$/.test(context.sha)) fail('Invalid workflow commit');
+            const request = async (route, extra = {}) =>
+              (await github.request(route, {owner, repo, ...extra})).data;
+            const ref = await request('GET /repos/{owner}/{repo}/git/ref/{ref}', {ref: `tags/${tag}`});
+            if (ref.ref !== `refs/tags/${tag}`) fail('Tag ref mismatch');
+            let object = ref.object;
+            for (let depth = 0; object?.type === 'tag' && depth < 8; depth++) {
+              const annotation = await request('GET /repos/{owner}/{repo}/git/tags/{tag_sha}', {tag_sha: object.sha});
+              object = annotation.object;
+            }
+            if (object?.type !== 'commit' || object.sha !== context.sha) {
+              fail('Release tag moved or does not point to the workflow commit');
+            }
+            const release = await request('GET /repos/{owner}/{repo}/releases/tags/{tag}', {tag});
+            if (release.tag_name !== tag || release.draft !== false || release.prerelease !== false
+                || !release.published_at || !Number.isSafeInteger(release.id) || release.id <= 0) {
+              fail('Expected the published, non-draft stable GitHub release');
+            }
+            if (event === 'release' && context.payload.release?.id !== release.id) {
+              fail('Published release was replaced');
+            }
+            if (process.env.EXPECTED_RELEASE_ID && String(release.id) !== process.env.EXPECTED_RELEASE_ID) {
+              fail('Validated release was replaced');
+            }
+            // target_commitish is informational for existing tags; release-please uses a SHA.
+            const main = await request('GET /repos/{owner}/{repo}/branches/{branch}', {branch: 'main'});
+            if (main.name !== 'main' || main.protected !== true || !/^[0-9a-f]{40}$/.test(main.commit?.sha)) {
+              fail('Cannot establish protected main');
+            }
+            const comparison = await request('GET /repos/{owner}/{repo}/compare/{basehead}', {
+              basehead: `${context.sha}...${main.commit.sha}`,
+            });
+            if (!['ahead', 'identical'].includes(comparison.status)
+                || comparison.merge_base_commit?.sha !== context.sha) {
+              fail('Release commit is not in protected main history');
+            }
+            core.setOutput('commit', context.sha);
+            core.setOutput('tag', tag);
+            core.setOutput('release-id', String(release.id));
+
       - uses: actions/download-artifact@v8
         with:
           name: dist
@@ -117,11 +270,78 @@ jobs:
 
   attach:
     name: Attach distributions to GitHub Release
-    needs: [build, attest]
+    needs: [guard, build, attest]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - name: Verify published release identity
+        uses: actions/github-script@v8
+        env:
+          EXPECTED_RELEASE_ID: ${{ needs.guard.outputs.release-id }}
+        with:
+          script: |
+            // Keep this read-only policy identical in guard, publish, and attach.
+            const fail = message => { throw new Error(message); };
+            const {owner, repo} = context.repo;
+            if (owner !== 'RQM-Technologies-dev' || repo !== process.env.PUBLISH_PROJECT) {
+              fail('Unexpected publishing repository');
+            }
+            const event = context.eventName;
+            if (event !== 'workflow_dispatch' && event !== 'release') fail('Unsupported release event');
+            if (event === 'release' && context.payload.action !== 'published') fail('Release is not published');
+            const tag = event === 'workflow_dispatch'
+              ? context.payload.inputs?.tag_name : context.payload.release?.tag_name;
+            if (typeof tag !== 'string' || tag !== tag.trim() || !/^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(tag)) {
+              fail('Expected a stable vMAJOR.MINOR.PATCH tag');
+            }
+            if (process.env.GITHUB_REF_TYPE !== 'tag' || context.ref !== `refs/tags/${tag}`) {
+              fail('Dispatch ref must be the exact requested release tag');
+            }
+            if (process.env.GITHUB_WORKFLOW_REF !== `${owner}/${repo}/.github/workflows/publish.yml@refs/tags/${tag}`
+                || process.env.GITHUB_WORKFLOW_SHA !== context.sha) {
+              fail('Publishing workflow must come from the tagged commit');
+            }
+            if (!/^[0-9a-f]{40}$/.test(context.sha)) fail('Invalid workflow commit');
+            const request = async (route, extra = {}) =>
+              (await github.request(route, {owner, repo, ...extra})).data;
+            const ref = await request('GET /repos/{owner}/{repo}/git/ref/{ref}', {ref: `tags/${tag}`});
+            if (ref.ref !== `refs/tags/${tag}`) fail('Tag ref mismatch');
+            let object = ref.object;
+            for (let depth = 0; object?.type === 'tag' && depth < 8; depth++) {
+              const annotation = await request('GET /repos/{owner}/{repo}/git/tags/{tag_sha}', {tag_sha: object.sha});
+              object = annotation.object;
+            }
+            if (object?.type !== 'commit' || object.sha !== context.sha) {
+              fail('Release tag moved or does not point to the workflow commit');
+            }
+            const release = await request('GET /repos/{owner}/{repo}/releases/tags/{tag}', {tag});
+            if (release.tag_name !== tag || release.draft !== false || release.prerelease !== false
+                || !release.published_at || !Number.isSafeInteger(release.id) || release.id <= 0) {
+              fail('Expected the published, non-draft stable GitHub release');
+            }
+            if (event === 'release' && context.payload.release?.id !== release.id) {
+              fail('Published release was replaced');
+            }
+            if (process.env.EXPECTED_RELEASE_ID && String(release.id) !== process.env.EXPECTED_RELEASE_ID) {
+              fail('Validated release was replaced');
+            }
+            // target_commitish is informational for existing tags; release-please uses a SHA.
+            const main = await request('GET /repos/{owner}/{repo}/branches/{branch}', {branch: 'main'});
+            if (main.name !== 'main' || main.protected !== true || !/^[0-9a-f]{40}$/.test(main.commit?.sha)) {
+              fail('Cannot establish protected main');
+            }
+            const comparison = await request('GET /repos/{owner}/{repo}/compare/{basehead}', {
+              basehead: `${context.sha}...${main.commit.sha}`,
+            });
+            if (!['ahead', 'identical'].includes(comparison.status)
+                || comparison.merge_base_commit?.sha !== context.sha) {
+              fail('Release commit is not in protected main history');
+            }
+            core.setOutput('commit', context.sha);
+            core.setOutput('tag', tag);
+            core.setOutput('release-id', String(release.id));
+
       - uses: actions/download-artifact@v8
         with:
           name: dist
@@ -131,7 +351,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ inputs.tag_name || github.event.release.tag_name }}
+          RELEASE_TAG: ${{ needs.guard.outputs.tag }}
         run: |
           (cd dist && sha256sum * > SHA256SUMS)
           gh release upload "$RELEASE_TAG" dist/* --clobber
